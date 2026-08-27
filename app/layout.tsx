@@ -6,7 +6,8 @@ import UserMenu from './components/UserMenu'
 
 export const metadata: Metadata = {
   title: 'Agamotto',
-  description: 'AI-powered PR review — multi-agent pipeline that finds the point where things break.',
+  description:
+    'AI-powered PR review — multi-agent pipeline that finds the point where things break.',
 }
 
 export default async function RootLayout({
