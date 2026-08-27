@@ -22,6 +22,39 @@ function checkPassword(submitted: string | undefined): boolean {
   return valid.length === 0 || valid.includes(submitted ?? '')
 }
 
+function isGitHubUser(
+  user: {
+    app_metadata?: { provider?: string }
+    identities?: { provider: string }[]
+  } | null
+): boolean {
+  if (!user) return false
+  if (user.app_metadata?.provider === 'github') return true
+  return user.identities?.some(i => i.provider === 'github') === true
+}
+
+/**
+ * Session lookup only when the access-code gate is closed. A getUser error
+ * or a non-GitHub identity is treated as unauthenticated (fall through to 401).
+ */
+async function hasGitHubSession(): Promise<boolean> {
+  try {
+    const supabase = await createSupabaseServerClient()
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser()
+    if (error) {
+      console.error('[POST /api/review/start] getUser failed:', error)
+      return false
+    }
+    return isGitHubUser(user)
+  } catch (err) {
+    console.error('[POST /api/review/start] getUser failed:', err)
+    return false
+  }
+}
+
 /**
  * Mint a review row (for last_review_id FK) and upsert the queue row to
  * IN_REVIEW. Both writes are best-effort so a queue/DB blip cannot block
@@ -71,11 +104,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const supabase = await createSupabaseServerClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user && !checkPassword(parsed.data.password)) {
+  if (!checkPassword(parsed.data.password) && !(await hasGitHubSession())) {
     return NextResponse.json(
       {
         error:

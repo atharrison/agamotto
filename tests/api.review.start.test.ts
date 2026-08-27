@@ -18,13 +18,21 @@ jest.mock('../src/memory/tracked-pr-store', () => ({
 }))
 
 jest.mock('../src/lib/supabase/server', () => ({
-  createSupabaseServerClient: jest.fn().mockImplementation(() => ({
-    auth: { getUser: mockGetUser },
-  })),
+  createSupabaseServerClient: jest.fn().mockImplementation(() =>
+    Promise.resolve({
+      auth: { getUser: mockGetUser },
+    })
+  ),
 }))
 
+import { createSupabaseServerClient } from '../src/lib/supabase/server'
+
 const PR_URL = 'https://github.com/acme/app/pull/42'
-const MOCK_USER = { id: 'user-1', email: 'dev@example.com' }
+const MOCK_GITHUB_USER = {
+  id: 'user-1',
+  email: 'dev@example.com',
+  app_metadata: { provider: 'github' },
+}
 
 async function postStart(body: unknown) {
   const { POST } = await import('../app/api/review/start/route')
@@ -74,17 +82,78 @@ describe('POST /api/review/start — validation', () => {
     process.env.ACCESS_PASSWORDS = 'secret'
     const res = await postStart({ prUrl: PR_URL, password: 'secret' })
     expect(res.status).toBe(202)
+    expect(createSupabaseServerClient).not.toHaveBeenCalled()
   })
 
   it('returns 202 when ACCESS_PASSWORDS is set but the caller has a GitHub session', async () => {
     process.env.ACCESS_PASSWORDS = 'secret'
     mockGetUser.mockResolvedValue({
-      data: { user: MOCK_USER },
+      data: { user: MOCK_GITHUB_USER },
       error: null,
     })
     const res = await postStart({ prUrl: PR_URL })
     expect(res.status).toBe(202)
     expect(mockCreateReview).toHaveBeenCalled()
+  })
+
+  it('returns 202 when the GitHub identity is only on user.identities', async () => {
+    process.env.ACCESS_PASSWORDS = 'secret'
+    mockGetUser.mockResolvedValue({
+      data: {
+        user: {
+          id: 'user-3',
+          identities: [{ provider: 'github' }],
+        },
+      },
+      error: null,
+    })
+    const res = await postStart({ prUrl: PR_URL })
+    expect(res.status).toBe(202)
+  })
+
+  it('returns 401 when ACCESS_PASSWORDS is set and the session is a non-GitHub provider', async () => {
+    process.env.ACCESS_PASSWORDS = 'secret'
+    mockGetUser.mockResolvedValue({
+      data: {
+        user: {
+          id: 'user-2',
+          app_metadata: { provider: 'google' },
+        },
+      },
+      error: null,
+    })
+    const res = await postStart({ prUrl: PR_URL })
+    expect(res.status).toBe(401)
+    expect(mockCreateReview).not.toHaveBeenCalled()
+  })
+
+  it('returns 401 when ACCESS_PASSWORDS is set and getUser returns an error', async () => {
+    process.env.ACCESS_PASSWORDS = 'secret'
+    mockGetUser.mockResolvedValue({
+      data: { user: MOCK_GITHUB_USER },
+      error: { message: 'network error' },
+    })
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await postStart({ prUrl: PR_URL })
+    expect(res.status).toBe(401)
+    expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('returns 401 when ACCESS_PASSWORDS is set and getUser throws', async () => {
+    process.env.ACCESS_PASSWORDS = 'secret'
+    mockGetUser.mockRejectedValue(new Error('network error'))
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await postStart({ prUrl: PR_URL })
+    expect(res.status).toBe(401)
+    expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('does not call getUser when ACCESS_PASSWORDS is unset', async () => {
+    const res = await postStart({ prUrl: PR_URL })
+    expect(res.status).toBe(202)
+    expect(createSupabaseServerClient).not.toHaveBeenCalled()
   })
 })
 
