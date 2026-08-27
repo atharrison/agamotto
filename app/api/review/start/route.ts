@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
 import { z } from 'zod'
 import { parsePrUrl } from '../../../../src/lib/queue'
+import { createSupabaseServerClient } from '../../../../src/lib/supabase/server'
 import { createReview } from '../../../../src/memory/review-store'
 import { markPrInReview } from '../../../../src/memory/tracked-pr-store'
 
@@ -51,6 +52,8 @@ async function beginTrackedReview(
 /**
  * POST /api/review/start
  * Validates the PR URL, mints a reviewId, and returns it.
+ * GitHub-authenticated users (queue Start Review) skip ACCESS_PASSWORDS;
+ * anonymous callers still need the access code when that env var is set.
  */
 export async function POST(request: NextRequest) {
   let body: unknown
@@ -68,7 +71,11 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  if (!checkPassword(parsed.data.password)) {
+  const supabase = await createSupabaseServerClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user && !checkPassword(parsed.data.password)) {
     return NextResponse.json(
       {
         error:
