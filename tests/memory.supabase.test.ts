@@ -8,8 +8,10 @@ jest.mock('@supabase/supabase-js', () => ({
 }))
 
 import { createClient } from '@supabase/supabase-js'
-import { SupabaseMemoryStore } from '../src/memory/supabase'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+  SupabaseMemoryStore,
+  type AgamottoClient,
+} from '../src/memory/supabase'
 
 function makeChain(result: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {}
@@ -30,9 +32,9 @@ function makeChain(result: { data: unknown; error: unknown }) {
   return chain
 }
 
-function makeClient(result: { data: unknown; error: unknown }): SupabaseClient {
+function makeClient(result: { data: unknown; error: unknown }): AgamottoClient {
   const chain = makeChain(result)
-  return { from: jest.fn().mockReturnValue(chain) } as unknown as SupabaseClient
+  return { from: jest.fn().mockReturnValue(chain) } as unknown as AgamottoClient
 }
 
 describe('SupabaseMemoryStore', () => {

@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
 import { AGAMOTTO_SCHEMA } from '../lib/supabase/schema'
 import type {
@@ -9,7 +9,7 @@ import type {
   PRMetadata,
 } from './store'
 
-function createSupabaseClient(): SupabaseClient {
+function createSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key =
     process.env.SUPABASE_SERVICE_ROLE_KEY ??
@@ -24,10 +24,13 @@ function createSupabaseClient(): SupabaseClient {
   return createClient(url, key, { db: { schema: AGAMOTTO_SCHEMA } })
 }
 
-export class SupabaseMemoryStore implements MemoryStore {
-  private client: SupabaseClient
+/** Injected in tests; production uses createSupabaseClient(). */
+export type AgamottoClient = ReturnType<typeof createSupabaseClient>
 
-  constructor(client?: SupabaseClient) {
+export class SupabaseMemoryStore implements MemoryStore {
+  private client: AgamottoClient
+
+  constructor(client?: AgamottoClient) {
     this.client = client ?? createSupabaseClient()
   }
 
