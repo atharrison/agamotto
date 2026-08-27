@@ -1,11 +1,13 @@
 /**
- * Tests for POST /api/review/start — ATH-15 tracked_prs lifecycle.
+ * Tests for POST /api/review/start — ATH-15 tracked_prs lifecycle,
+ * ATH-40 session skip of ACCESS_PASSWORDS.
  */
 
 import { NextRequest } from 'next/server'
 
 const mockCreateReview = jest.fn().mockResolvedValue(undefined)
 const mockMarkPrInReview = jest.fn().mockResolvedValue(undefined)
+const mockGetUser = jest.fn()
 
 jest.mock('../src/memory/review-store', () => ({
   createReview: (...args: unknown[]) => mockCreateReview(...args),
@@ -15,7 +17,14 @@ jest.mock('../src/memory/tracked-pr-store', () => ({
   markPrInReview: (...args: unknown[]) => mockMarkPrInReview(...args),
 }))
 
+jest.mock('../src/lib/supabase/server', () => ({
+  createSupabaseServerClient: jest.fn().mockImplementation(() => ({
+    auth: { getUser: mockGetUser },
+  })),
+}))
+
 const PR_URL = 'https://github.com/acme/app/pull/42'
+const MOCK_USER = { id: 'user-1', email: 'dev@example.com' }
 
 async function postStart(body: unknown) {
   const { POST } = await import('../app/api/review/start/route')
@@ -31,6 +40,7 @@ beforeEach(() => {
   jest.clearAllMocks()
   mockCreateReview.mockResolvedValue(undefined)
   mockMarkPrInReview.mockResolvedValue(undefined)
+  mockGetUser.mockResolvedValue({ data: { user: null }, error: null })
   delete process.env.ACCESS_PASSWORDS
 })
 
@@ -51,6 +61,30 @@ describe('POST /api/review/start — validation', () => {
     expect(res.status).toBe(401)
     expect(mockCreateReview).not.toHaveBeenCalled()
     expect(mockMarkPrInReview).not.toHaveBeenCalled()
+  })
+
+  it('returns 401 when ACCESS_PASSWORDS is set, no session, and no password (queue Start Review)', async () => {
+    process.env.ACCESS_PASSWORDS = 'secret'
+    const res = await postStart({ prUrl: PR_URL })
+    expect(res.status).toBe(401)
+    expect(mockCreateReview).not.toHaveBeenCalled()
+  })
+
+  it('returns 202 when ACCESS_PASSWORDS is set and the password is correct', async () => {
+    process.env.ACCESS_PASSWORDS = 'secret'
+    const res = await postStart({ prUrl: PR_URL, password: 'secret' })
+    expect(res.status).toBe(202)
+  })
+
+  it('returns 202 when ACCESS_PASSWORDS is set but the caller has a GitHub session', async () => {
+    process.env.ACCESS_PASSWORDS = 'secret'
+    mockGetUser.mockResolvedValue({
+      data: { user: MOCK_USER },
+      error: null,
+    })
+    const res = await postStart({ prUrl: PR_URL })
+    expect(res.status).toBe(202)
+    expect(mockCreateReview).toHaveBeenCalled()
   })
 })
 
