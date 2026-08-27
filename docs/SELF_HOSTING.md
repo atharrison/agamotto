@@ -32,7 +32,6 @@ Before you start, make sure you have:
 Optional but recommended:
 
 - **Linear API key** — enables ticket context in reviews. Reviews degrade gracefully without it.
-- **Supabase CLI** — for local development and manual migration runs. Install with `brew install supabase/tap/supabase`.
 
 ---
 
@@ -43,7 +42,7 @@ git clone https://github.com/atharrison/agamotto.git
 cd agamotto
 nvm use          # picks up .nvmrc → Node 24
 npm install
-cp .env.example .env
+npm run env:init
 ```
 
 Fill in `.env` as you complete the steps below. The app will refuse to start with a clear error listing any missing required variables.
@@ -52,11 +51,21 @@ Fill in `.env` as you complete the steps below. The app will refuse to start wit
 
 ## 3. Supabase setup
 
-### 3a. Create a new Supabase project
+### 3a. Create a new project — or connect an existing one
+
+> **Schema isolation**: Agamotto creates and uses its own `agamotto` schema. No tables are written to `public`. This means it is safe to add Agamotto to an existing Supabase project without disturbing other services.
+
+**New project:**
 
 1. Go to [supabase.com/dashboard](https://supabase.com/dashboard) → **New project**.
 2. Choose a region close to your Railway deployment region.
 3. Save the **database password** — you'll need it for the GitHub Actions secret.
+
+**Existing project:**
+
+1. Open your project in the Supabase dashboard.
+2. Confirm the `vector` extension is enabled: **Database → Extensions → pgvector** (Agamotto's migration enables it automatically if it isn't, but your Supabase plan must support it — all paid plans and the free tier do).
+3. Note your **project ref** (the ID in the dashboard URL) and **database password** — you'll need both for the migration step below.
 
 ### 3b. Enable the GitHub OAuth provider
 
@@ -69,19 +78,15 @@ Fill in `.env` as you complete the steps below. The app will refuse to start wit
 
 Agamotto uses a dedicated `agamotto` schema (not `public`). Migrations live in `supabase/migrations/` and are automatically applied on push to `main` via GitHub Actions.
 
-**For a fresh install**, apply them manually once:
+**For a fresh install**, apply them manually once. The Supabase CLI is already in `devDependencies` — use `npm run` scripts or `npx supabase` directly (no separate install needed):
 
 ```bash
-# Install the Supabase CLI if you haven't already
-brew install supabase/tap/supabase
-
-# Link to your hosted project
-supabase link --project-ref <YOUR_PROJECT_REF>
-# Project ref is the string in your Supabase dashboard URL:
-# https://supabase.com/dashboard/project/<PROJECT_REF>
+# Link to your hosted project (project ref is in your Supabase dashboard URL:
+# https://supabase.com/dashboard/project/<PROJECT_REF>)
+npx supabase link --project-ref <YOUR_PROJECT_REF>
 
 # Push all migrations
-supabase db push --include-all
+npm run db:migrate
 ```
 
 Alternatively, paste the contents of `supabase/migrations/20260827000000_initial_agamotto_schema.sql` and `supabase/migrations/20260827010000_grant_agamotto_schema_privileges.sql` directly into the **SQL editor** in the Supabase dashboard (run them in order).

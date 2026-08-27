@@ -23,7 +23,8 @@
     "db:migrate:local": "supabase migration up",
     "db:reset": "supabase db reset",
     "db:studio": "supabase studio",
-    "db:types": "supabase gen types typescript --local > src/types/database.types.ts"
+    "db:types": "supabase gen types typescript --local > src/types/database.types.ts",
+    "env:init": "cp -n .env.example .env && echo '.env created — fill in the required values before starting the app.'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
