@@ -40,7 +40,7 @@ function LoginForm() {
     <div className="flex min-h-screen items-center justify-center bg-gray-950">
       <div className="w-full max-w-sm rounded-2xl border border-gray-800 bg-gray-900 p-8 shadow-xl">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-white">PR Review Harness</h1>
+          <h1 className="text-2xl font-bold text-white">Agamotto</h1>
           <p className="mt-2 text-sm text-gray-400">
             Sign in with GitHub to start reviewing pull requests.
           </p>

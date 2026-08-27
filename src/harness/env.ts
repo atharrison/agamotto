@@ -35,7 +35,7 @@ export function validateEnv(): void {
     [
       '',
       '┌─────────────────────────────────────────────────────┐',
-      '│  gauntlet-harness: missing required env variables   │',
+      '│  agamotto: missing required env variables           │',
       '└─────────────────────────────────────────────────────┘',
       '',
       'The following variables must be set before the server starts:',

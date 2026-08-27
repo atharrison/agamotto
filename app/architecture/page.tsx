@@ -2,9 +2,9 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'Architecture | PR Review Harness',
+  title: 'Architecture | Agamotto',
   description:
-    'One-page architecture overview of the PR Review Agent built at Fired Festival.',
+    'One-page architecture overview of Agamotto, built at Fired Festival.',
 }
 
 export default function ArchitecturePage() {
@@ -17,7 +17,7 @@ export default function ArchitecturePage() {
             href="/"
             className="mb-2 inline-flex items-center gap-1.5 text-sm text-gray-500 transition-colors hover:text-gray-300"
           >
-            ← back to harness
+            ← back to Agamotto
           </Link>
           <h1 className="mt-2 text-2xl font-bold text-white">
             Architecture One-Pager

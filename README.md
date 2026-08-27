@@ -3,8 +3,7 @@
 **AI-powered pull request review with human-in-the-loop approval.**  
 Paste a GitHub PR URL, watch multiple specialized agents review it in parallel, then curate the findings before anything reaches your team. Gets smarter with every review — past reviews and team standards are injected as context automatically.
 
-Site: **https://agamotto.dev**  
-Live demo: **https://gauntlet-review-harness.up.railway.app**
+Site: **https://agamotto.dev**
 
 ---
 
@@ -179,7 +178,7 @@ The harness picks these up without any hints — purely from reading the diff, t
 
 ```bash
 # Deployed
-open https://gauntlet-review-harness.up.railway.app
+open https://agamotto.dev
 
 # Local dev
 cp .env.example .env   # fill in required keys below

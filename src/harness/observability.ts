@@ -1,5 +1,5 @@
 /**
- * OTel tracer setup for gauntlet-harness.
+ * OTel tracer setup for Agamotto.
  *
  * Exports a singleton tracer and a `withSpan` helper for wrapping async
  * operations in properly-nested spans.
@@ -29,7 +29,7 @@ import {
   ConsoleSpanExporter,
 } from '@opentelemetry/sdk-trace-node'
 
-const SERVICE_NAME = 'gauntlet-harness'
+const SERVICE_NAME = 'agamotto'
 const TRACER_VERSION = '1.0.0'
 
 export enum OtelExporter {

@@ -2,6 +2,40 @@
 
 ---
 
+# Session State — 2026-08-26 22:59
+
+## Context
+
+**This repo (gauntlet-harness) has been forked into a new project named Agamotto.**
+New repo: https://github.com/atharrison/agamotto — domain: https://agamotto.dev (registered tonight on Squarespace).
+gauntlet-harness stays as the legacy/archive repo. All future work happens in agamotto.
+
+## Decisions Made
+
+- **Project name: Agamotto** — Eye of Agamotto (MCU/Doctor Strange), all-seeing artifact. Brainstormed ~30 candidates tonight; Prism/Karnak/Enki/Heimdall/Wintermute all eliminated for conflicts. agamotto.dev and npm `agamotto` were both clean.
+- **DB schema: `agamotto`** (not `public`) — migration `20260827000000_rename_schema_to_agamotto.sql` moves all 7 tables + 2 helper functions via `ALTER TABLE ... SET SCHEMA`. Grants re-applied. config.toml updated.
+- **ATH-40 branch was NOT merged into gauntlet-harness** — changes were rsync'd into the new agamotto repo instead. Branch deleted.
+
+## Tickets Touched
+
+- **ATH-40**: Created (schema rename + UI rebrand). Work lives in agamotto repo as initial commit, not in gauntlet-harness.
+
+## Next Steps (in the **agamotto** workspace, not here)
+
+1. Update `package.json`: `name` → `"agamotto"`, `description` → something fitting
+2. `supabase db reset` — apply the migration locally
+3. `supabase gen types typescript --local > src/lib/database.types.ts`
+4. Commit the above, then tackle **ATH-20** (self-hosting guide: `docs/SELF_HOSTING.md`)
+
+## Key Files (in agamotto repo)
+
+- `supabase/migrations/20260827000000_rename_schema_to_agamotto.sql` — the schema rename
+- `src/lib/supabase/server.ts` — both clients now pass `db: { schema: 'agamotto' }`
+- `supabase/config.toml` — agamotto added to `schemas` + `extra_search_path`
+- `app/layout.tsx` — title/header rebranded to "Agamotto"
+
+---
+
 # Session State — 2026-08-24 23:30
 
 ## Context

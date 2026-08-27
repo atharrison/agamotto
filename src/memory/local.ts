@@ -14,7 +14,7 @@ import type {
 function dbPath(): string {
   return (
     process.env.SQLITE_DB_PATH ??
-    path.join(os.homedir(), '.gauntlet-harness', 'memory.db')
+    path.join(os.homedir(), '.agamotto', 'memory.db')
   )
 }
 

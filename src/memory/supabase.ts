@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
+import { AGAMOTTO_SCHEMA } from '../lib/supabase/schema'
 import type {
   MemoryStore,
   Memory,
@@ -20,7 +21,7 @@ function createSupabaseClient(): SupabaseClient {
     )
   }
 
-  return createClient(url, key)
+  return createClient(url, key, { db: { schema: AGAMOTTO_SCHEMA } })
 }
 
 export class SupabaseMemoryStore implements MemoryStore {

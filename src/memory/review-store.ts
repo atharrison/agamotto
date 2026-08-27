@@ -9,6 +9,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import type { PRReview } from '../agents/pr-review/schema'
+import { AGAMOTTO_SCHEMA } from '../lib/supabase/schema'
 
 function createSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -18,7 +19,7 @@ function createSupabaseClient() {
       'NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for the review store'
     )
   }
-  return createClient(url, key)
+  return createClient(url, key, { db: { schema: AGAMOTTO_SCHEMA } })
 }
 
 export type ReviewStatus = 'RUNNING' | 'COMPLETE' | 'ERROR'
