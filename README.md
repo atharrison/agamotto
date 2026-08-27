@@ -3,7 +3,7 @@
 **AI-powered pull request review with human-in-the-loop approval.**  
 Paste a GitHub PR URL, watch multiple specialized agents review it in parallel, then curate the findings before anything reaches your team. Gets smarter with every review — past reviews and team standards are injected as context automatically.
 
-Site: **https://agamotto.dev**
+Site: **https://agamotto.dev** | **[Self-hosting guide →](docs/SELF_HOSTING.md)**
 
 ---
 
@@ -208,5 +208,6 @@ npm test
 
 ## Docs
 
+- **[`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) — deploy your own instance in under 30 minutes**
 - [`HARNESS.md`](HARNESS.md) — four-pillar design doc (hackathon deliverable)
 - [`MASTER_CHECKLIST.md`](MASTER_CHECKLIST.md) — build day checklist + future roadmap
