@@ -74,6 +74,8 @@ describe('withSpan', () => {
       code: otelMock.SpanStatusCode.OK,
     })
     expect(otelMock._spanMock.end).toHaveBeenCalled()
+    const api = jest.requireMock('@opentelemetry/api')
+    expect(api.trace.getTracer).toHaveBeenCalledWith('agamotto', '1.0.0')
   })
 
   it('re-throws errors, records exception, and marks span ERROR', async () => {

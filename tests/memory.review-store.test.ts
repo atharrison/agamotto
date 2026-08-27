@@ -40,6 +40,16 @@ beforeEach(() => {
 })
 
 describe('createReview', () => {
+  it('scopes the Supabase client to the agamotto schema', async () => {
+    mockCreateClient.mockReturnValue(makeChain({ data: null, error: null }))
+    await createReview('rev-1', 'https://github.com/a/b/pull/1', 'full')
+    expect(mockCreateClient).toHaveBeenCalledWith(
+      'https://test.supabase.co',
+      'test-service-key',
+      { db: { schema: 'agamotto' } }
+    )
+  })
+
   it('inserts a RUNNING review row', async () => {
     mockCreateClient.mockReturnValue(makeChain({ data: null, error: null }))
     await expect(

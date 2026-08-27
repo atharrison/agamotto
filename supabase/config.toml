@@ -1,5 +1,5 @@
 # Supabase CLI config — https://supabase.com/docs/guides/local-development/cli/config
-project_id = "gauntlet-harness"
+project_id = "agamotto"
 
 [api]
 enabled = true

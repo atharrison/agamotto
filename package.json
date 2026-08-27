@@ -1,8 +1,8 @@
 {
-  "name": "gauntlet-harness",
+  "name": "agamotto",
   "version": "0.1.0",
   "private": true,
-  "description": "AI-assisted PR review harness — four-pillar architecture (guardrails, checkpoints, material handling, alarms)",
+  "description": "AI-powered PR review — multi-agent pipeline with human-in-the-loop approval",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

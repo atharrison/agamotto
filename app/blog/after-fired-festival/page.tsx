@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'After Fired Festival | PR Review Harness',
+  title: 'After Fired Festival | Agamotto',
   description:
     'A first-place finish at the 2026 Fired Festival AI hackathon, and what it meant.',
   openGraph: {

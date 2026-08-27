@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { AGAMOTTO_SCHEMA } from './schema'
 
 export const GH_TOKEN_COOKIE = 'gh_provider_token'
 
@@ -13,7 +14,7 @@ export function createSupabaseServiceRoleClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { db: { schema: 'agamotto' } }
+    { db: { schema: AGAMOTTO_SCHEMA } }
   )
 }
 
@@ -27,7 +28,7 @@ export async function createSupabaseServerClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
-      db: { schema: 'agamotto' },
+      db: { schema: AGAMOTTO_SCHEMA },
       cookies: {
         getAll() {
           return cookieStore.getAll()

@@ -42,7 +42,7 @@ function HomePageContent() {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
       <h1 className="mb-3 text-4xl font-bold tracking-tight text-white">
-        AI PR Review Harness
+        Agamotto
       </h1>
       <p className="mb-10 max-w-xl text-lg text-gray-400">
         Multi-agent code review with guardrails, checkpoints, and an approval

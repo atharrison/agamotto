@@ -58,6 +58,9 @@ describe('validateEnv', () => {
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining('ANTHROPIC_API_KEY')
     )
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining('agamotto: missing required env variables')
+    )
   })
 
   it('lists all missing vars in the error message when multiple are absent', () => {

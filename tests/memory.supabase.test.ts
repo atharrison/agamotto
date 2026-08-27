@@ -3,6 +3,11 @@
  * Injects a mock Supabase client via the constructor.
  */
 
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: jest.fn().mockReturnValue({ from: jest.fn() }),
+}))
+
+import { createClient } from '@supabase/supabase-js'
 import { SupabaseMemoryStore } from '../src/memory/supabase'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -210,6 +215,17 @@ describe('SupabaseMemoryStore', () => {
       )
       process.env.NEXT_PUBLIC_SUPABASE_URL = origUrl
       process.env.SUPABASE_SERVICE_ROLE_KEY = origKey
+    })
+
+    it('scopes the default client to the agamotto schema', () => {
+      process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co'
+      process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-key'
+      new SupabaseMemoryStore()
+      expect(createClient).toHaveBeenCalledWith(
+        'https://test.supabase.co',
+        'test-service-key',
+        { db: { schema: 'agamotto' } }
+      )
     })
   })
 })
