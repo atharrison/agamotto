@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { viewReviewHref } from '../../src/lib/tracked-prs'
+import { TrackedPrStatus, viewReviewHref } from '../../src/lib/tracked-prs'
 
 interface TrackedPr {
   id: string
@@ -23,27 +23,32 @@ interface TrackedPr {
 
 type RepoGroup = { key: string; owner: string; repo: string; prs: TrackedPr[] }
 
-const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  OPEN: {
+const STATUS_BADGE: Record<
+  TrackedPrStatus,
+  { label: string; className: string }
+> = {
+  [TrackedPrStatus.OPEN]: {
     label: 'Open',
     className: 'bg-blue-900/50 text-blue-300 border-blue-800',
   },
-  IN_REVIEW: {
+  [TrackedPrStatus.IN_REVIEW]: {
     label: 'In Review',
     className: 'bg-yellow-900/50 text-yellow-300 border-yellow-800',
   },
-  REVIEWED: {
+  [TrackedPrStatus.REVIEWED]: {
     label: 'Reviewed',
     className: 'bg-green-900/50 text-green-300 border-green-800',
   },
-  CLOSED: {
+  [TrackedPrStatus.CLOSED]: {
     label: 'Closed',
     className: 'bg-gray-800/80 text-gray-500 border-gray-700',
   },
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const badge = STATUS_BADGE[status] ?? STATUS_BADGE['OPEN']
+  const badge =
+    STATUS_BADGE[status as TrackedPrStatus] ??
+    STATUS_BADGE[TrackedPrStatus.OPEN]
   return (
     <span
       className={`inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium ${badge.className}`}
@@ -74,14 +79,14 @@ function formatDate(iso: string | null): string {
   })
 }
 
-type StatusFilter = 'ALL' | 'OPEN' | 'IN_REVIEW' | 'REVIEWED' | 'CLOSED'
+type StatusFilter = 'ALL' | TrackedPrStatus
 
 const FILTER_TABS: { value: StatusFilter; label: string }[] = [
   { value: 'ALL', label: 'All' },
-  { value: 'OPEN', label: 'Open' },
-  { value: 'IN_REVIEW', label: 'In Review' },
-  { value: 'REVIEWED', label: 'Reviewed' },
-  { value: 'CLOSED', label: 'Closed' },
+  { value: TrackedPrStatus.OPEN, label: 'Open' },
+  { value: TrackedPrStatus.IN_REVIEW, label: 'In Review' },
+  { value: TrackedPrStatus.REVIEWED, label: 'Reviewed' },
+  { value: TrackedPrStatus.CLOSED, label: 'Closed' },
 ]
 
 export default function QueueDisplay({
@@ -234,9 +239,9 @@ export default function QueueDisplay({
             {group.prs.map(pr => {
               const isRemoving = removingId === pr.id
               const isStarting = startingIds.has(pr.id)
-              const isClosed = pr.status === 'CLOSED'
-              const isReviewed = pr.status === 'REVIEWED'
-              const isOpen = pr.status === 'OPEN'
+              const isClosed = pr.status === TrackedPrStatus.CLOSED
+              const isReviewed = pr.status === TrackedPrStatus.REVIEWED
+              const isOpen = pr.status === TrackedPrStatus.OPEN
               const reviewHref = viewReviewHref(pr)
 
               return (
@@ -313,7 +318,7 @@ export default function QueueDisplay({
                         {isStarting ? '…' : 'Re-review'}
                       </button>
                     )}
-                    {pr.status === 'IN_REVIEW' && (
+                    {pr.status === TrackedPrStatus.IN_REVIEW && (
                       <span className="rounded-md border border-yellow-800 px-3 py-1.5 text-xs font-medium text-yellow-400">
                         Reviewing…
                       </span>

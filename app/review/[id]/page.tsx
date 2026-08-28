@@ -2,6 +2,7 @@ import { ReviewShell } from './ReviewShell'
 import {
   getReview,
   listCompleteReviewIdsForPr,
+  ReviewStatus,
 } from '../../../src/memory/review-store'
 import type { StoredReviewPayload } from '../../../src/lib/stored-review-ui'
 import { siblingReviewNav } from '../../../src/lib/review-siblings'
@@ -24,7 +25,9 @@ export default async function ReviewPage({ params, searchParams }: Props) {
 
   const resolvedPrUrl = prUrl || stored?.pr_url || ''
   const storedResult: StoredReviewPayload | null =
-    stored?.status === 'COMPLETE' && stored.result ? stored.result : null
+    stored?.status === ReviewStatus.COMPLETE && stored.result
+      ? stored.result
+      : null
 
   let siblingIds: string[] = []
   if (resolvedPrUrl) {

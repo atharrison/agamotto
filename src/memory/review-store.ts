@@ -22,8 +22,14 @@ function createSupabaseClient() {
   return createClient(url, key, { db: { schema: AGAMOTTO_SCHEMA } })
 }
 
-export type ReviewStatus = 'RUNNING' | 'COMPLETE' | 'ERROR'
+/** Row status on `agamotto.reviews`. Matches the Postgres enum values. */
+export enum ReviewStatus {
+  RUNNING = 'RUNNING',
+  COMPLETE = 'COMPLETE',
+  ERROR = 'ERROR',
+}
 
+/** One row from `agamotto.reviews`. `result` is the full PRReview JSON when COMPLETE. */
 export interface ReviewRow {
   id: string
   pr_url: string
@@ -47,7 +53,7 @@ export async function createReview(
     id,
     pr_url: prUrl,
     mode,
-    status: 'RUNNING',
+    status: ReviewStatus.RUNNING,
   })
   if (error) throw new Error(`createReview failed: ${error.message}`)
 }
@@ -60,7 +66,7 @@ export async function completeReview(
   const { error } = await createSupabaseClient()
     .from('reviews')
     .update({
-      status: 'COMPLETE',
+      status: ReviewStatus.COMPLETE,
       result: review as unknown as Record<string, unknown>,
     })
     .eq('id', id)
@@ -74,7 +80,7 @@ export async function failReview(
 ): Promise<void> {
   const { error } = await createSupabaseClient()
     .from('reviews')
-    .update({ status: 'ERROR', error_message: errorMessage })
+    .update({ status: ReviewStatus.ERROR, error_message: errorMessage })
     .eq('id', id)
   if (error) throw new Error(`failReview failed: ${error.message}`)
 }
@@ -93,7 +99,12 @@ export async function getReview(id: string): Promise<ReviewRow | null> {
   return data as ReviewRow
 }
 
-/** Complete review ids for a PR, oldest first. Empty if none. */
+/**
+ * Complete review ids for a PR, oldest first. Empty if none.
+ *
+ * Single query for the review-page pager — selects only `id`, not the result blob.
+ * Not called from the queue (queue rows already have `last_review_id`).
+ */
 export async function listCompleteReviewIdsForPr(
   prUrl: string
 ): Promise<string[]> {
@@ -101,7 +112,7 @@ export async function listCompleteReviewIdsForPr(
     .from('reviews')
     .select('id')
     .eq('pr_url', prUrl)
-    .eq('status', 'COMPLETE')
+    .eq('status', ReviewStatus.COMPLETE)
     .order('created_at', { ascending: true })
   if (error)
     throw new Error(`listCompleteReviewIdsForPr failed: ${error.message}`)

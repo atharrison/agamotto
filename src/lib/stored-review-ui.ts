@@ -3,6 +3,7 @@
  * Used when opening View Review so the page never looks like a live pipeline.
  */
 
+/** One finding as persisted on `reviews.result` (blocking / suggestion / nit). */
 export interface StoredFinding {
   id: string
   severity: 'BLOCKING' | 'SUGGESTION' | 'NIT'
@@ -15,12 +16,14 @@ export interface StoredFinding {
   suggestedFix?: string
 }
 
+/** Subset of `PRReview` needed to paint the approval UI without re-running agents. */
 export interface StoredReviewPayload {
   blockingIssues?: StoredFinding[]
   suggestions?: StoredFinding[]
   nits?: StoredFinding[]
 }
 
+/** Initial ReviewShell state for a COMPLETE stored review. */
 export interface StoredReviewUiState {
   status: 'done'
   isCachedReview: true
@@ -30,6 +33,10 @@ export interface StoredReviewUiState {
   activity: { type: 'phase'; text: string }[]
 }
 
+/**
+ * Map a stored review payload into ReviewShell initial state.
+ * Returns null when there is no result to hydrate (live pipeline should run).
+ */
 export function storedReviewUiState(
   result: StoredReviewPayload | null | undefined
 ): StoredReviewUiState | null {
