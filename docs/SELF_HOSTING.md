@@ -14,7 +14,7 @@ Deploy your own Agamotto instance from scratch in under 30 minutes.
 6. [Configure repos in the app](#6-configure-repos-in-the-app)
 7. [GitHub webhook setup](#7-github-webhook-setup-per-repo)
 8. [Environment variable reference](#8-environment-variable-reference)
-9. [Upgrade path](#upgrade-path-webhooks--github-app)
+9. [Upgrade path](#9-upgrade-path-webhooks--github-app)
 
 ---
 
@@ -336,7 +336,7 @@ Keep the secret handy — you'll paste it into GitHub in the next step.
 
 ---
 
-## Upgrade path: webhooks → GitHub App
+## 9. Upgrade path: webhooks → GitHub App
 
 The current webhook setup (step 6) uses **per-repo secrets** — you configure a webhook on each repository individually. This works well for a handful of repos.
 
