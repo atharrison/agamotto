@@ -1,7 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { viewReviewHref } from '../../src/lib/tracked-prs'
 
 interface TrackedPr {
   id: string
@@ -15,6 +17,7 @@ interface TrackedPr {
   status: string
   updated_since_review: boolean
   review_count: number
+  last_review_id?: string | null
   created_at: string
 }
 
@@ -234,13 +237,16 @@ export default function QueueDisplay({
               const isClosed = pr.status === 'CLOSED'
               const isReviewed = pr.status === 'REVIEWED'
               const isOpen = pr.status === 'OPEN'
+              const reviewHref = viewReviewHref(pr)
 
               return (
                 <div
                   key={pr.id}
-                  className={`flex flex-col gap-2 p-4 sm:flex-row sm:items-start sm:gap-4 ${isClosed ? 'opacity-50' : ''}`}
+                  className="flex flex-col gap-2 p-4 sm:flex-row sm:items-start sm:gap-4"
                 >
-                  <div className="min-w-0 flex-1">
+                  <div
+                    className={`min-w-0 flex-1 ${isClosed ? 'opacity-50' : ''}`}
+                  >
                     <div className="flex flex-wrap items-center gap-2">
                       <a
                         href={pr.pr_url}
@@ -277,6 +283,14 @@ export default function QueueDisplay({
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
+                    {reviewHref && (
+                      <Link
+                        href={reviewHref}
+                        className="rounded-md border border-gray-700 px-3 py-1.5 text-xs font-medium text-gray-300 transition hover:border-indigo-700 hover:text-indigo-300"
+                      >
+                        View Review
+                      </Link>
+                    )}
                     {(isOpen || pr.updated_since_review) && !isClosed && (
                       <button
                         onClick={() => handleStartReview(pr)}

@@ -56,3 +56,19 @@ export function buildReviewedPatch(reviewId: string): TrackedPrReviewedPatch {
     last_review_id: reviewId,
   }
 }
+
+/**
+ * Path to the last completed review for a queue row.
+ *
+ * IN_REVIEW is excluded: that last_review_id is the in-flight pipeline, and
+ * opening it from the queue would re-enter GET /api/review/[id] as a live run.
+ * OPEN/CLOSED still link when a prior review exists (updated-since-review or merged).
+ */
+export function viewReviewHref(pr: {
+  status: string
+  last_review_id?: string | null
+}): string | null {
+  if (!pr.last_review_id) return null
+  if (pr.status === TrackedPrStatus.IN_REVIEW) return null
+  return `/review/${pr.last_review_id}`
+}

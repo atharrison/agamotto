@@ -8,6 +8,10 @@ import {
   getReview,
 } from '../../../../src/memory/review-store'
 import { getGitHubToken } from '../../../../src/lib/supabase/server'
+import {
+  ReviewStreamKind,
+  resolveReviewStream,
+} from '../../../../src/lib/review-stream'
 
 // Allow up to 5 minutes for the full multi-agent review pipeline
 export const maxDuration = 300
@@ -47,15 +51,8 @@ export async function GET(
 
       send('connected', { reviewId, prUrl, message: 'Stream connected' })
 
-      if (!prUrl) {
-        send('error', { error: 'prUrl query param is required' })
-        send('done', { reviewId })
-        controller.close()
-        return
-      }
-
-      // Check if this review already completed (page refresh / re-visit).
-      // Load from Supabase and replay findings without re-running the pipeline.
+      // Look up the DB row before requiring ?prUrl= so queue "View Review"
+      // links (`/review/{id}` with no query) can replay COMPLETE results.
       let existing = null
       try {
         existing = await getReview(reviewId)
@@ -63,11 +60,29 @@ export async function GET(
         console.warn(`[review/${reviewId}] getReview check failed:`, err)
       }
 
-      if (existing?.status === 'COMPLETE' && existing.result) {
+      const decision = resolveReviewStream({
+        queryPrUrl: prUrl,
+        stored: existing
+          ? {
+              status: existing.status,
+              pr_url: existing.pr_url,
+              result: existing.result,
+            }
+          : null,
+      })
+
+      if (decision.kind === ReviewStreamKind.ERROR) {
+        send('error', { error: decision.error })
+        send('done', { reviewId })
+        controller.close()
+        return
+      }
+
+      if (decision.kind === ReviewStreamKind.REPLAY && existing?.result) {
         const review = existing.result
         send('connected', {
           reviewId,
-          prUrl,
+          prUrl: decision.prUrl,
           cached: true,
           message: 'Loaded from database',
         })
@@ -89,21 +104,14 @@ export async function GET(
         return
       }
 
-      if (existing?.status === 'ERROR') {
-        send('error', {
-          error: 'Review failed. Check server logs for details.',
-        })
-        send('done', { reviewId })
-        controller.close()
-        return
-      }
+      const runPrUrl = decision.prUrl
 
       // Fresh run — create the review row if start didn't already, then run
       // the pipeline. Duplicate insert is skipped so ATH-15 can mint the row
       // in /api/review/start (needed for tracked_prs.last_review_id FK).
       if (!existing) {
         try {
-          await createReview(reviewId, prUrl, mode)
+          await createReview(reviewId, runPrUrl, mode)
         } catch (err) {
           console.error(`[review/${reviewId}] createReview failed:`, err)
           send('error', {
@@ -123,7 +131,7 @@ export async function GET(
         const context = createReviewContext(undefined, githubToken)
         const review = await runReview({
           reviewId,
-          prUrl,
+          prUrl: runPrUrl,
           mode,
           context,
           emit: send,

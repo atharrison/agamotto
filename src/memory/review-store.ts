@@ -93,6 +93,21 @@ export async function getReview(id: string): Promise<ReviewRow | null> {
   return data as ReviewRow
 }
 
+/** Complete review ids for a PR, oldest first. Empty if none. */
+export async function listCompleteReviewIdsForPr(
+  prUrl: string
+): Promise<string[]> {
+  const { data, error } = await createSupabaseClient()
+    .from('reviews')
+    .select('id')
+    .eq('pr_url', prUrl)
+    .eq('status', 'COMPLETE')
+    .order('created_at', { ascending: true })
+  if (error)
+    throw new Error(`listCompleteReviewIdsForPr failed: ${error.message}`)
+  return ((data ?? []) as { id: string }[]).map(row => row.id)
+}
+
 /** Persist the user's finalize submission against the review row. */
 export async function setReviewSubmission(
   id: string,

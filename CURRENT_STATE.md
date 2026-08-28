@@ -2,6 +2,54 @@
 
 ---
 
+# Session State — 2026-08-27 22:23
+
+## Context
+
+ATH-20 (self-hosting guide) merged as PR #6. Custom domain `agamotto.dev` is now live via Cloudflare → Railway. Both `agamotto.dev` (redirect) and `www.agamotto.dev` (canonical) resolve with valid TLS.
+
+## Decisions Made
+
+- **Steps 6/7 swapped from ticket AC**: "Configure repos" (step 6) before "Webhook setup" (step 7) — DB row must exist before `webhook_secret` can be written.
+- **`workflow_dispatch` added to `supabase-deploy.yml`**: fresh forks won't retrigger on push; manual trigger is the self-hoster bootstrap path.
+- **`npm run env:init` / `webhook:secret`**: `cp -n .env.example .env` and `openssl rand -hex 32` wrappers added to `package.json`.
+- **`repo` OAuth scope**: already in `app/login/page.tsx` `signInWithOAuth` — no Supabase UI config needed.
+- **Canonical URL is `www.agamotto.dev`**: Railway custom domain is `www`; bare `agamotto.dev` 301s via Cloudflare redirect rule. `NEXT_PUBLIC_SITE_URL`, Supabase Site URL, and GitHub OAuth App Homepage URL all updated to `https://www.agamotto.dev`.
+- **Cloudflare as DNS**: Squarespace nameservers replaced with Cloudflare (`roan` + `zariyah`). `www` CNAME is DNS-only (Railway terminates TLS); `@` CNAME is proxied (Cloudflare terminates TLS for bare domain).
+
+## Tickets Touched
+
+- **ATH-20**: Done ✅ — PR #6 merged.
+- **ATH-41**: Created — auto-generate webhook secret on repo add. Backlog, Medium.
+- **ATH-42**: Created — surface GitHub comment post failure + copy-to-clipboard button. Backlog, High.
+
+## What Was Tried and Abandoned
+
+- Squarespace DNS for `@` CNAME — not supported at apex; switched to Cloudflare.
+- "Additional scopes" in Supabase GitHub provider UI — doesn't exist; scope is in code.
+
+## Open Questions / Blockers
+
+- ATH-36 (webhook secret UI) partially superseded by ATH-41; still open.
+- Browser shows "not secure" on cached sessions — clears with `chrome://net-internals/#hsts` delete + hard reload.
+
+## Next Steps
+
+1. ATH-42 (finalize error surfacing + copy-to-clipboard) — small, high-value.
+2. ATH-41 (webhook secret auto-gen in settings UI).
+3. ATH-37 queue auto-refresh, ATH-30 queue → past review.
+
+## Key Files
+
+- `docs/SELF_HOSTING.md` — self-hosting guide
+- `package.json` — `env:init`, `webhook:secret` scripts
+- `.github/workflows/supabase-deploy.yml` — `workflow_dispatch` added
+- `app/login/page.tsx` — `repo` scope in `signInWithOAuth`
+- `app/api/review/[id]/finalize/route.ts` — ATH-42 target
+- Ops doc: `cursor-rules/workspaces/agamotto/DOMAIN_SETUP.md`
+
+---
+
 # Session State — 2026-08-27 02:09
 
 ## Context
@@ -13,7 +61,7 @@ ATH-40 closed. Agamotto is live at https://agamotto.up.railway.app (Railway `aga
 - **Single baseline, no SET SCHEMA for self-hosters**: `20260827000000_initial_agamotto_schema.sql` only. Hosted tables were moved earlier; `schema_migrations` repaired so the baseline looks applied (SQL never re-ran).
 - **Apply hosted SQL via migration + merge**, not the SQL editor. PR #4 granted `USAGE` on schema `agamotto` (SET SCHEMA does not copy schema grants; 42501).
 - **GitHub session skips `ACCESS_PASSWORDS`** on `POST /api/review/start` (PR #5). Anonymous homepage still uses the env var. Check GitHub identity; skip `getUser` when the code gate is already open.
-- **Webhook secret is `configured_repos.webhook_secret`**, not a Railway env var. ATH-36 still needed for UI. Both repos’ GitHub hooks now point at `agamotto.up.railway.app/api/webhooks/github`.
+- **Webhook secret is `configured_repos.webhook_secret`**, not a Railway env var. ATH-36 still needed for UI. Both repos' GitHub hooks now point at `agamotto.up.railway.app/api/webhooks/github`.
 
 ## Tickets Touched
 
@@ -135,169 +183,21 @@ Gauntlet Harness — shipped ATH-17 (Conventions, Performance, and Style agents)
 - **`conventionsDoc?: string` in `RunReviewOptions`**: conventions agent accepts optional team conventions doc threaded from coordinator; falls back to built-in defaults; ready for ATH-23 (in-app editor) with no coordinator changes
 - **NIT section added to `formatGitHubComment`**: NITs were accepted in the UI but silently dropped — no rendering block existed for them; added `### 💬 Nits` section, only renders when user explicitly accepts a NIT
 - **OUTPUT checkpoint as authoritative DOMAIN→done signal**: removed hardcoded `>= 5` agent count from ReviewShell; DOMAIN phase now transitions on OUTPUT checkpoint (server-authoritative), so UI never hangs if an agent fails to emit its checkpoint
-- **ATH-38 created**: OTel tracing optional (`OTEL_TRACES_EXPORTER=none`) — no off switch existed for local dev console noise
 
 ## Tickets Touched
 
-- **ATH-17**: Done ✅ (PR #22 merged — conventions/performance/style agents + domain-agent-utils refactor + NIT rendering + DOMAIN phase hang fix)
+- **ATH-17**: Done ✅ (PR #22 merged)
 - **ATH-38**: Created — make OTel tracing optional for local dev
-
-## Open Questions / Blockers
-
-- Production webhook still not wired (ATH-36 prerequisite)
-- `conventionsDoc` loading from Supabase `settings` deferred to ATH-23
 
 ## Next Steps
 
-1. ATH-38 (OTel `OTEL_TRACES_EXPORTER=none`) — quick win, reduce local dev console noise
-2. ATH-15 (wire `tracked_prs` to review lifecycle) — closes the loop so queue → review → done is tracked
-3. ATH-30 (link queue rows to past review output) — pairs naturally after ATH-15
+1. ATH-38 (OTel `OTEL_TRACES_EXPORTER=none`) — quick win
+2. ATH-15 (wire `tracked_prs` to review lifecycle)
+3. ATH-30 (link queue rows to past review output)
 
 ## Key Files
 
 - `src/agents/pr-review/domain-agent-utils.ts` — shared parseDomainResult (new)
-- `src/agents/pr-review/conventions-agent.ts`, `performance-agent.ts`, `style-agent.ts` — new domain agents
-- `src/agents/pr-review/approval.ts` — NIT section added to formatGitHubComment
-- `app/review/[id]/ReviewShell.tsx` — DOMAIN phase hang fix (OUTPUT checkpoint-driven)
-
----
-
-# Session State — 2026-08-17 22:28
-
-## Context
-
-Gauntlet Harness — shipped ATH-16 (GitHub webhook receiver, PR #20) and ATH-31 (bypass URL entry from queue, PR #21). Both merged. 5+ review rounds on ATH-16; 2 rounds on ATH-31. Multiple new backlog tickets created; MVP/Remaining milestones set up.
-
-## Decisions Made
-
-- **Full auth before event-type branch** in webhook route: HMAC verification and DB lookup happen before checking `x-github-event`, so non-`pull_request` events still go through full auth (→ 204 after auth)
-- **`TIMING_DUMMY_SECRET` pattern**: unknown-repo and null-secret paths perform a dummy `verifyGitHubSignature` call to equalize timing and prevent repo enumeration
-- **All 401 bodies identical**: `{ error: 'Unauthorized' }` regardless of failure reason — prevents enumeration
-- **`reopened` uses `.update()` not upsert**: explicitly sets `updated_since_review: false` for deterministic state; avoids overwriting fields not owned by reopened event
-- **`startingId → Set<string>`** in QueueDisplay: per-row loading state; prevents race where clicking two PRs rapidly re-enables first row's button
-- **`res.text()` on error path**: avoids throw when server returns non-JSON (e.g. 502 HTML)
-
-## Tickets Touched
-
-- **ATH-16**: Done ✅ (PR #20 merged)
-- **ATH-31**: Done ✅ (PR #21 merged — review-driven hardening in final two commits)
-- **ATH-30, 32, 33, 34, 35, 36, 37**: All created in backlog; MVP vs Remaining milestones assigned
-
-## Open Questions / Blockers
-
-- Production webhook not yet wired: need `GITHUB_WEBHOOK_SECRET` Railway env var + GitHub repo webhook configured pointing to `/api/webhooks/github`
-- ATH-36 (webhook secret UI) blocks clean self-serve webhook setup
-
-## Next Steps
-
-1. Wire webhook in production: add `GITHUB_WEBHOOK_SECRET` to Railway, configure GitHub repo webhook
-2. ATH-37 (queue auto-refresh + manual refresh button) — small, good next ticket
-3. ATH-30 (link queue rows to past review output) — pairs well with ATH-37
-
-## Key Files
-
-- `app/api/webhooks/github/route.ts` — webhook receiver (full auth before event branch)
-- `src/lib/webhook.ts` — HMAC verify/compute utilities
-- `tests/api.webhooks.github.test.ts` — webhook route tests
-- `app/queue/QueueDisplay.tsx` — queue UI with hardened handleStartReview
-
----
-
-# Session State — 2026-08-16 23:23
-
-## Context
-
-Gauntlet Harness — AI-powered PR review tool. Sprint 1 MVP is fully merged and live in production. This session continued from the previous one, shipping ATH-22 and ATH-28 via PR #19 (merged).
-
-## What Was Done This Session
-
-- **ATH-27** (coverage cleanup) merged via PR #18 — responded to review, fixed `mockAnonClient.current` baseline reset
-- **Production go-live** — fixed OAuth redirect loop (Supabase provider not enabled, Site URL pointed to localhost, `request.url` returning `0.0.0.0:8080`); added `NEXT_PUBLIC_SITE_URL` env var + `x-forwarded-host` header fallback in auth callback
-- **ATH-22** merged via PR #19 — env var startup validation (`src/harness/env.ts` + `instrumentation.ts`), `setReviewSubmission` 500 hardening, SSE error sanitization; 224 tests / 24 suites
-- **ATH-28** merged in same PR #19 — `fetch_pr_files` patch limit 8 KB → 32 KB + sentinel on truncation; eliminates false "placeholder code" review findings
-- Created **ATH-29** — review comment preview + edit before posting to GitHub
-- Created **ATH-28** — diff truncation bug (now Done)
-
-## Decisions Made
-
-- **`process.exit(1)` over `throw`** in `validateEnv()`: throwing lets Next.js wrap the error with its own noisy error block; `process.exit` gives clean output
-- **32 KB patch limit** (up from 8 KB): covers typical test files without hitting model context limits; sentinel appended on overflow so agents know content was cut
-- **ATH-28 bundled into PR #19**: small and directly related to review quality; no reason to make it a separate PR
-- **Concurrent pipeline race (INSERT ON CONFLICT)**: explicitly deferred — not in ATH-22 scope, no ticket yet
-
-## Tickets Touched
-
-- **ATH-22**: Done ✅ (merged PR #19)
-- **ATH-27**: Done ✅ (merged PR #18, earlier in session)
-- **ATH-28**: Done ✅ (shipped in PR #19)
-- **ATH-29**: Created — review comment preview + edit before posting to GitHub
-
-## Open Questions
-
-- Review harness still sees two consecutive "REQUEST_CHANGES" on PR #19 due to diff truncation. Now that ATH-28 is merged, next PR review should get complete diffs. Worth smoke-testing on the next PR.
-- Concurrent pipeline race condition still unguarded — worth a ticket before adding more traffic.
-
-## Next Steps
-
-1. Smoke-test a real end-to-end review in production (PRs should now get full diffs)
-2. Pick next feature ticket — candidates: ATH-16 (GitHub webhook), ATH-18 (wire search_past_reviews), ATH-19 (review history page), ATH-29 (comment preview/edit)
-3. File concurrent pipeline race ticket before it becomes a real incident
-
-## Key Files
-
-- `src/harness/env.ts` — new startup validation module
-- `src/tools/github.ts` — patch limit now 32 KB + sentinel
-- `app/api/auth/callback/route.ts` — `x-forwarded-host` origin fix + `NEXT_PUBLIC_SITE_URL` override
-- `app/api/review/[id]/finalize/route.ts` — `setReviewSubmission` 500 hardening (both paths)
-- `app/api/review/[id]/route.ts` — SSE error sanitization
-
----
-
-# Session State — 2026-08-16 22:15
-
-## Context
-
-Gauntlet Harness — AI-powered PR review tool. Sprint 1 MVP tickets are merged. App is live in production on Railway.
-
-## What Was Done This Session
-
-- **ATH-27** (test coverage cleanup) merged via PR #18 — overall coverage 74.7% → 87.6%
-- Responded to PR #18 review: fixed `mockAnonClient.current` baseline reset in GET /api/queue/repos `beforeEach`; clarified false "placeholder tests" finding (reviewer's diff was truncated)
-- Created **ATH-28** — bug ticket for review harness truncating long diff hunks causing false positives
-- **Production deployment** — fixed OAuth redirect loop:
-  - Supabase GitHub provider was not enabled → enabled it with prod OAuth App credentials
-  - Supabase Site URL pointed to localhost → updated to Railway URL
-  - `request.url` in auth callback returned `0.0.0.0:8080` (Railway internal) → fixed by reading `x-forwarded-host`/`x-forwarded-proto` headers, with `NEXT_PUBLIC_SITE_URL` env var as explicit override
-  - Added `NEXT_PUBLIC_SITE_URL` to `.env.example`
-  - Committed as `e0f0d0d Adding NEXT_PUBLIC_SITE_URL`
-- App is now **live and authenticated** at https://gauntlet-review-harness.up.railway.app
-
-## Decisions Made
-
-- `origin` resolution priority in auth callback: `NEXT_PUBLIC_SITE_URL` > `x-forwarded-host` headers > `request.url` origin
-- No `GITHUB_TOKEN` static PAT needed in prod — replaced by GitHub OAuth flow
-
-## Production Env Variables (Railway)
-
-All required vars are set. Key ones added this session:
-
-- `NEXT_PUBLIC_SITE_URL=https://gauntlet-review-harness.up.railway.app`
-- `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` (prod OAuth App)
-- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (remote Supabase project `diecadjyrngrlveumsqn`)
-- `ALLOWED_GITHUB_USERS=atharrison`
-
-## Open Questions
-
-- ATH-28: Where exactly does diff truncation happen in the review pipeline? Likely in `context-agent.ts` or wherever the diff is injected into the prompt.
-
-## Next Steps
-
-- Smoke-test a real PR review end-to-end in production
-- Triage remaining backlog tickets for next sprint
-- Investigate ATH-28 (diff truncation bug)
-
-## Key Files
-
-- `app/api/auth/callback/route.ts` — origin resolution fix (x-forwarded-\* headers)
-- `.env.example` — now documents `NEXT_PUBLIC_SITE_URL`
-- `tests/api.queue.test.ts` — GET /api/queue/repos `beforeEach` baseline fix
+- `src/agents/pr-review/conventions-agent.ts`, `performance-agent.ts`, `style-agent.ts`
+- `src/agents/pr-review/approval.ts` — NIT section added
+- `app/review/[id]/ReviewShell.tsx` — DOMAIN phase hang fix
