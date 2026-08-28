@@ -161,6 +161,8 @@ export function ReviewShell({
   }
 
   useEffect(() => {
+    // COMPLETE hydrate is passed from the server page — skip EventSource
+    // entirely (do not open-then-close). Pager hops remount via key={reviewId}.
     if (storedResult) return
 
     const es = new EventSource(

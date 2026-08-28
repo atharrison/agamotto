@@ -39,7 +39,9 @@ export default async function ReviewPage({ params, searchParams }: Props) {
   }
 
   return (
+    // key remounts on Older/Newer so hydrate + scroll don't reuse the previous review's client state
     <ReviewShell
+      key={reviewId}
       reviewId={reviewId}
       prUrl={resolvedPrUrl}
       mode={mode === 'quick' ? 'quick' : 'full'}
