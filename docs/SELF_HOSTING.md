@@ -9,8 +9,8 @@ Deploy your own Agamotto instance from scratch in under 30 minutes.
 3. [Supabase setup](#3-supabase-setup)
 4. [GitHub OAuth App](#4-github-oauth-app)
 5. [Railway deployment](#5-railway-deployment)
-6. [GitHub webhook setup](#6-github-webhook-setup-per-repo)
-7. [Configure repos in the app](#7-configure-repos-in-the-app)
+6. [Configure repos in the app](#6-configure-repos-in-the-app)
+7. [GitHub webhook setup](#7-github-webhook-setup-per-repo)
 8. [Environment variable reference](#8-environment-variable-reference)
 9. [Upgrade path](#upgrade-path-webhooks--github-app)
 
@@ -22,7 +22,7 @@ Before you start, make sure you have:
 
 | Requirement           | Notes                                                                                |
 | --------------------- | ------------------------------------------------------------------------------------ |
-| **Node.js 22+**       | `node --version` should show `v22.x` or later. Use `nvm` if needed.                  |
+| **Node.js 22+**       | The `.nvmrc` pins Node 24 — `nvm use` handles this automatically. Minimum is 22.     |
 | **Supabase account**  | Free tier is enough. [supabase.com](https://supabase.com)                            |
 | **Railway account**   | Free trial works. [railway.app](https://railway.app)                                 |
 | **GitHub account**    | Used for OAuth login and PR access.                                                  |
@@ -77,8 +77,8 @@ Fill in `.env` as you complete the steps below. The app will refuse to start wit
 
 1. In your Supabase project, go to **Authentication → Providers → GitHub**.
 2. Toggle it **enabled**.
-3. Paste in your GitHub OAuth App **Client ID** and **Client Secret** (created in step 4).
-4. Copy the **Callback URL** shown — you'll paste it into your GitHub OAuth App.
+3. Copy the **Callback URL** shown — you'll need it when creating your GitHub OAuth App in step 4.
+4. Leave the **Client ID** and **Client Secret** fields empty for now — you'll fill them in after step 4b.
 
 ### 3c. Copy your Supabase env vars
 
@@ -121,11 +121,11 @@ No local CLI setup needed. Future migrations (when you pull updates from upstrea
 1. Go to **GitHub → Settings → Developer settings → OAuth Apps → New OAuth App** (or use [this link](https://github.com/settings/applications/new)).
 2. Fill in:
 
-   | Field                          | Value                                                                    |
-   | ------------------------------ | ------------------------------------------------------------------------ |
-   | **Application name**           | `Agamotto` (or whatever you like)                                        |
-   | **Homepage URL**               | Your Railway app URL (e.g. `https://agamotto-production.up.railway.app`) |
-   | **Authorization callback URL** | `https://<your-domain>/api/auth/callback`                                |
+   | Field                          | Value                                                                 |
+   | ------------------------------ | --------------------------------------------------------------------- |
+   | **Application name**           | `Agamotto` (or whatever you like)                                     |
+   | **Homepage URL**               | Your Railway app URL — use a placeholder for now; update after step 5 |
+   | **Authorization callback URL** | `https://<your-domain>/api/auth/callback`                             |
 
 3. Click **Register application**.
 
@@ -136,9 +136,9 @@ No local CLI setup needed. Future migrations (when you pull updates from upstrea
 
 > **Scopes**: Agamotto uses GitHub OAuth for authentication only. Read access to PR diffs comes from the authenticated user's token, which already has `repo` access on sign-in. No additional scopes need to be set on the OAuth App itself.
 
-### 4c. Update your Supabase GitHub provider
+### 4c. Complete the Supabase GitHub provider
 
-Paste the **Client ID** and **Client Secret** into the Supabase GitHub provider settings you opened in step 3b.
+Go back to the Supabase GitHub provider page you opened in step 3b. Paste in the **Client ID** and **Client Secret**, then click **Save**.
 
 ---
 
@@ -185,7 +185,7 @@ See the [full reference table](#8-environment-variable-reference) for all variab
 
 ### 5c. Configure the health check
 
-Railway automatically uses `/api/health` for health checks. No additional configuration needed.
+In your Railway service, go to **Settings → Health Check** and set the path to `/api/health`. Railway will poll this endpoint and mark the deployment healthy once it returns `200`.
 
 ### 5d. Verify the deployment
 
@@ -205,15 +205,26 @@ Then open the app root and sign in with GitHub.
 
 ---
 
-## 6. GitHub webhook setup (per repo)
+## 6. Configure repos in the app
+
+1. Sign in to your Agamotto instance with GitHub.
+2. Navigate to **Queue → Settings**.
+3. Enter a repo in one of these formats:
+   - `owner/repo` (e.g. `atharrison/agamotto`)
+   - Full GitHub URL (e.g. `https://github.com/atharrison/agamotto`)
+4. Click **Add**. The repo row is created in the database — PRs from it will appear in the queue when webhooks fire.
+
+You can add as many repos as you like. To remove a repo, click the **Remove** button in the settings list.
+
+---
+
+## 7. GitHub webhook setup (per repo)
 
 Webhooks let Agamotto receive push notifications when PRs are opened, updated, or closed — instead of relying on manual queue entry.
 
-> **Why this comes after deployment and repo configuration**: the webhook needs your Railway domain (available after step 5) for the payload URL, and a per-repo webhook secret (generated in step 7) for the HMAC signature. Complete steps 5 and 7 first, then return here for each repo you want to monitor.
-
 For each GitHub repo you want Agamotto to monitor:
 
-### 6a. Generate and store the webhook secret
+### 7a. Generate and store the webhook secret
 
 Each repo needs its own secret for GitHub to sign webhook payloads. Generate one:
 
@@ -231,7 +242,7 @@ Keep the secret handy — you'll paste it into GitHub in the next step.
 
 > <!-- TODO: update this section when webhook secret is auto-generated from the Queue → Settings page -->
 
-### 6b. Create the webhook in GitHub
+### 7b. Create the webhook in GitHub
 
 1. Go to the GitHub repo → **Settings → Webhooks → Add webhook**.
 2. Fill in:
@@ -240,23 +251,10 @@ Keep the secret handy — you'll paste it into GitHub in the next step.
    | ----------------- | ------------------------------------------------------------------------- |
    | **Payload URL**   | `https://<your-railway-domain>/api/webhooks/github`                       |
    | **Content type**  | `application/json`                                                        |
-   | **Secret**        | Paste the webhook secret from step 6a                                     |
+   | **Secret**        | Paste the webhook secret from step 7a                                     |
    | **Which events?** | Select **Let me select individual events** → check **Pull requests** only |
 
 3. Click **Add webhook**. GitHub will send a ping event — a green checkmark confirms the endpoint is reachable.
-
----
-
-## 7. Configure repos in the app
-
-1. Sign in to your Agamotto instance with GitHub.
-2. Navigate to **Queue → Settings**.
-3. Enter a repo in one of these formats:
-   - `owner/repo` (e.g. `atharrison/agamotto`)
-   - Full GitHub URL (e.g. `https://github.com/atharrison/agamotto`)
-4. Click **Add**. The repo is now tracked — PRs from it will appear in the queue when webhooks fire.
-
-You can add as many repos as you like. To remove a repo, click the **Remove** button in the settings list.
 
 ---
 
