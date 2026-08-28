@@ -2,6 +2,8 @@
 
 Deploy your own Agamotto instance from scratch in under 30 minutes.
 
+> Agamotto works with any PostgreSQL database and any Node.js-capable hosting platform. These instructions are written for **Supabase** (database + session management) and **Railway** (hosting) — the combination we use in production. GitHub OAuth is the identity provider; Supabase handles the session layer on top of it. The same steps apply to other platforms — the specifics will differ if you use Render, Fly.io, Neon, or your own infrastructure.
+
 ## Table of Contents
 
 1. [Prerequisites](#1-prerequisites)
