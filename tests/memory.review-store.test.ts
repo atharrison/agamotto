@@ -17,6 +17,7 @@ import {
   completeReview,
   failReview,
   getReview,
+  listCompleteReviewIdsForPr,
   setReviewSubmission,
 } from '../src/memory/review-store'
 import type { PRReview } from '../src/agents/pr-review/schema'
@@ -131,6 +132,42 @@ describe('getReview', () => {
       makeChain({ data: null, error: { code: '500', message: 'DB error' } })
     )
     await expect(getReview('rev-1')).rejects.toThrow('getReview failed')
+  })
+})
+
+describe('listCompleteReviewIdsForPr', () => {
+  it('returns ids oldest-first and filters COMPLETE', async () => {
+    const chain = makeChain({
+      data: [{ id: 'rev-old' }, { id: 'rev-new' }],
+      error: null,
+    })
+    mockCreateClient.mockReturnValue(chain)
+    const ids = await listCompleteReviewIdsForPr(
+      'https://github.com/a/b/pull/1'
+    )
+    expect(ids).toEqual(['rev-old', 'rev-new'])
+    expect(chain.eq).toHaveBeenCalledWith(
+      'pr_url',
+      'https://github.com/a/b/pull/1'
+    )
+    expect(chain.eq).toHaveBeenCalledWith('status', 'COMPLETE')
+    expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: true })
+  })
+
+  it('returns [] when the query has no rows', async () => {
+    mockCreateClient.mockReturnValue(makeChain({ data: null, error: null }))
+    await expect(
+      listCompleteReviewIdsForPr('https://github.com/a/b/pull/1')
+    ).resolves.toEqual([])
+  })
+
+  it('throws when Supabase returns an error', async () => {
+    mockCreateClient.mockReturnValue(
+      makeChain({ data: null, error: { message: 'DB error' } })
+    )
+    await expect(
+      listCompleteReviewIdsForPr('https://github.com/a/b/pull/1')
+    ).rejects.toThrow('listCompleteReviewIdsForPr failed')
   })
 })
 

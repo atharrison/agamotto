@@ -1,6 +1,12 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
+import {
+  storedReviewUiState,
+  type StoredReviewPayload,
+} from '../../../src/lib/stored-review-ui'
+import type { SiblingReviewNav } from '../../../src/lib/review-siblings'
 
 interface Finding {
   id: string
@@ -74,13 +80,24 @@ interface Props {
   reviewId: string
   prUrl: string
   mode?: 'full' | 'quick'
+  storedResult?: StoredReviewPayload | null
+  siblingNav?: SiblingReviewNav | null
 }
 
-export function ReviewShell({ reviewId, prUrl, mode = 'full' }: Props) {
-  const [status, setStatus] = useState<StreamStatus>('connecting')
-  const [findings, setFindings] = useState<Finding[]>([])
+export function ReviewShell({
+  reviewId,
+  prUrl,
+  mode = 'full',
+  storedResult = null,
+  siblingNav = null,
+}: Props) {
+  const hydrated = storedReviewUiState(storedResult)
+  const [status, setStatus] = useState<StreamStatus>(
+    hydrated?.status ?? 'connecting'
+  )
+  const [findings, setFindings] = useState<Finding[]>(hydrated?.findings ?? [])
   const [decisions, setDecisions] = useState<Record<string, FindingDecision>>(
-    {}
+    hydrated?.decisions ?? {}
   )
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
@@ -90,15 +107,21 @@ export function ReviewShell({ reviewId, prUrl, mode = 'full' }: Props) {
   const [submitResult, setSubmitResult] = useState<string | null>(null)
   const [phaseStatuses, setPhaseStatuses] = useState<
     Record<string, PhaseStatus>
-  >({
-    INPUT: 'running',
-    CONTEXT: 'pending',
-    DOMAIN: 'pending',
-    OUTPUT: 'pending',
-  })
-  const [activity, setActivity] = useState<ActivityEntry[]>([])
+  >(
+    hydrated?.phaseStatuses ?? {
+      INPUT: 'running',
+      CONTEXT: 'pending',
+      DOMAIN: 'pending',
+      OUTPUT: 'pending',
+    }
+  )
+  const [activity, setActivity] = useState<ActivityEntry[]>(
+    hydrated?.activity.map((entry, i) => ({ ...entry, id: i + 1 })) ?? []
+  )
   const [elapsed, setElapsed] = useState(0)
-  const [isCachedReview, setIsCachedReview] = useState(false)
+  const [isCachedReview, setIsCachedReview] = useState(
+    hydrated?.isCachedReview ?? false
+  )
   const [runStats, setRunStats] = useState<{
     tokensUsed: number
     estimatedCostUsd: number
@@ -109,8 +132,8 @@ export function ReviewShell({ reviewId, prUrl, mode = 'full' }: Props) {
   const startTimeRef = useRef(Date.now())
   const domainDoneRef = useRef(0)
   const esRef = useRef<EventSource | null>(null)
-  const activityEndRef = useRef<HTMLDivElement | null>(null)
-  const activitySeqRef = useRef(0)
+  const activityListRef = useRef<HTMLDivElement | null>(null)
+  const activitySeqRef = useRef(hydrated?.activity.length ?? 0)
 
   // Tick elapsed while running — skip for cache replays (no meaningful duration)
   useEffect(() => {
@@ -122,16 +145,26 @@ export function ReviewShell({ reviewId, prUrl, mode = 'full' }: Props) {
     return () => clearInterval(t)
   }, [status, isCachedReview])
 
-  // Auto-scroll activity log
+  // Keep the activity log pinned to the latest event without scrolling the page
   useEffect(() => {
-    activityEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const container = activityListRef.current
+    if (!container) return
+    container.scrollTop = container.scrollHeight
   }, [activity])
+
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [reviewId])
 
   function addActivity(entry: Omit<ActivityEntry, 'id'>) {
     setActivity(prev => [...prev, { ...entry, id: ++activitySeqRef.current }])
   }
 
   useEffect(() => {
+    // COMPLETE hydrate is passed from the server page — skip EventSource
+    // entirely (do not open-then-close). Pager hops remount via key={reviewId}.
+    if (storedResult) return
+
     const es = new EventSource(
       `/api/review/${reviewId}?prUrl=${encodeURIComponent(prUrl)}&mode=${mode}`
     )
@@ -249,7 +282,7 @@ export function ReviewShell({ reviewId, prUrl, mode = 'full' }: Props) {
     }
 
     return () => es.close()
-  }, [reviewId, mode])
+  }, [reviewId, mode, prUrl, storedResult])
 
   function toggle(id: string) {
     setDecisions(prev => ({
@@ -362,6 +395,11 @@ export function ReviewShell({ reviewId, prUrl, mode = 'full' }: Props) {
           <p className="mt-1 text-xs text-gray-500 font-mono">
             review/{reviewId}
           </p>
+          {siblingNav && (
+            <div className="mt-3 lg:hidden">
+              <SiblingNavBlock nav={siblingNav} />
+            </div>
+          )}
         </div>
 
         {/* Status bar */}
@@ -622,7 +660,10 @@ export function ReviewShell({ reviewId, prUrl, mode = 'full' }: Props) {
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
               Activity
             </h2>
-            <div className="max-h-80 overflow-y-auto space-y-1.5 pr-1">
+            <div
+              ref={activityListRef}
+              className="max-h-80 overflow-y-auto space-y-1.5 pr-1"
+            >
               {activity.length === 0 ? (
                 <p className="text-xs text-gray-600">Waiting for events…</p>
               ) : (
@@ -643,9 +684,10 @@ export function ReviewShell({ reviewId, prUrl, mode = 'full' }: Props) {
                   </p>
                 ))
               )}
-              <div ref={activityEndRef} />
             </div>
           </div>
+
+          {siblingNav && <SiblingNavBlock nav={siblingNav} />}
         </div>
       </div>
     </div>
@@ -653,6 +695,42 @@ export function ReviewShell({ reviewId, prUrl, mode = 'full' }: Props) {
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
+
+function SiblingNavBlock({ nav }: { nav: SiblingReviewNav }) {
+  const btn =
+    'flex-1 rounded-md border px-3 py-2 text-center text-sm font-medium transition'
+  const enabled =
+    'border-gray-600 bg-gray-800 text-gray-100 hover:border-indigo-500 hover:text-indigo-300'
+  const disabled =
+    'cursor-not-allowed border-gray-800 bg-gray-950 text-gray-600'
+
+  return (
+    <div className="rounded-lg border border-indigo-900/50 bg-gray-900 p-4">
+      <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        Reviews
+      </h2>
+      <p className="mb-3 text-sm font-medium text-white">
+        Review {nav.position} of {nav.total}
+      </p>
+      <div className="flex gap-2">
+        {nav.olderId ? (
+          <Link href={`/review/${nav.olderId}`} className={`${btn} ${enabled}`}>
+            ← Older
+          </Link>
+        ) : (
+          <span className={`${btn} ${disabled}`}>← Older</span>
+        )}
+        {nav.newerId ? (
+          <Link href={`/review/${nav.newerId}`} className={`${btn} ${enabled}`}>
+            Newer →
+          </Link>
+        ) : (
+          <span className={`${btn} ${disabled}`}>Newer →</span>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function StatusIndicator({ status }: { status: StreamStatus }) {
   const configs: Record<StreamStatus, { dot: string; label: string }> = {

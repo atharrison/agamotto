@@ -3,6 +3,7 @@ import {
   TrackedPrStatus,
   buildInReviewUpsert,
   buildReviewedPatch,
+  viewReviewHref,
 } from '../src/lib/tracked-prs'
 
 const parsed = parsePrUrl('https://github.com/acme/app/pull/42')!
@@ -58,5 +59,54 @@ describe('buildReviewedPatch', () => {
       last_review_id: 'rev-9',
     })
     expect(patch).not.toHaveProperty('review_count')
+  })
+})
+
+describe('viewReviewHref', () => {
+  const reviewId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+
+  it('returns /review/{id} for a REVIEWED row with last_review_id', () => {
+    expect(
+      viewReviewHref({
+        status: TrackedPrStatus.REVIEWED,
+        last_review_id: reviewId,
+      })
+    ).toBe(`/review/${reviewId}`)
+  })
+
+  it('returns /review/{id} for a CLOSED row that still has last_review_id', () => {
+    expect(
+      viewReviewHref({
+        status: TrackedPrStatus.CLOSED,
+        last_review_id: reviewId,
+      })
+    ).toBe(`/review/${reviewId}`)
+  })
+
+  it('returns /review/{id} for OPEN + last_review_id (updated after review)', () => {
+    expect(
+      viewReviewHref({
+        status: TrackedPrStatus.OPEN,
+        last_review_id: reviewId,
+      })
+    ).toBe(`/review/${reviewId}`)
+  })
+
+  it('returns null when last_review_id is missing', () => {
+    expect(
+      viewReviewHref({
+        status: TrackedPrStatus.REVIEWED,
+        last_review_id: null,
+      })
+    ).toBeNull()
+  })
+
+  it('returns null for IN_REVIEW so the live pipeline is not re-entered from the queue', () => {
+    expect(
+      viewReviewHref({
+        status: TrackedPrStatus.IN_REVIEW,
+        last_review_id: reviewId,
+      })
+    ).toBeNull()
   })
 })

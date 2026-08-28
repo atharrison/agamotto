@@ -8,6 +8,7 @@
 
 import type { ParsedPrUrl } from './queue'
 
+/** Lifecycle status on `tracked_prs`. Matches the Postgres enum values. */
 export enum TrackedPrStatus {
   OPEN = 'OPEN',
   IN_REVIEW = 'IN_REVIEW',
@@ -15,6 +16,7 @@ export enum TrackedPrStatus {
   CLOSED = 'CLOSED',
 }
 
+/** Queue upsert payload when a review starts (always IN_REVIEW). */
 export interface TrackedPrInReviewUpsert {
   owner: string
   repo: string
@@ -24,6 +26,7 @@ export interface TrackedPrInReviewUpsert {
   last_review_id?: string
 }
 
+/** Queue patch applied on finalize. `review_count` is trigger-owned — do not set it here. */
 export interface TrackedPrReviewedPatch {
   status: TrackedPrStatus.REVIEWED
   last_review_id: string
@@ -55,4 +58,20 @@ export function buildReviewedPatch(reviewId: string): TrackedPrReviewedPatch {
     status: TrackedPrStatus.REVIEWED,
     last_review_id: reviewId,
   }
+}
+
+/**
+ * Path to the last completed review for a queue row.
+ *
+ * IN_REVIEW is excluded: that last_review_id is the in-flight pipeline, and
+ * opening it from the queue would re-enter GET /api/review/[id] as a live run.
+ * OPEN/CLOSED still link when a prior review exists (updated-since-review or merged).
+ */
+export function viewReviewHref(pr: {
+  status: string
+  last_review_id?: string | null
+}): string | null {
+  if (!pr.last_review_id) return null
+  if (pr.status === TrackedPrStatus.IN_REVIEW) return null
+  return `/review/${pr.last_review_id}`
 }
