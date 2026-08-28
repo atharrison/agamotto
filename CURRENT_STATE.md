@@ -2,6 +2,48 @@
 
 ---
 
+# Session State — 2026-08-27 02:09
+
+## Context
+
+ATH-40 closed. Agamotto is live at https://agamotto.up.railway.app (Railway `agamotto-web`). Hosted schema is `agamotto`; GitHub Actions `db push` applies migrations. Queue Start Review 401 was leftover `ACCESS_PASSWORDS`, not the new repo.
+
+## Decisions Made
+
+- **Single baseline, no SET SCHEMA for self-hosters**: `20260827000000_initial_agamotto_schema.sql` only. Hosted tables were moved earlier; `schema_migrations` repaired so the baseline looks applied (SQL never re-ran).
+- **Apply hosted SQL via migration + merge**, not the SQL editor. PR #4 granted `USAGE` on schema `agamotto` (SET SCHEMA does not copy schema grants; 42501).
+- **GitHub session skips `ACCESS_PASSWORDS`** on `POST /api/review/start` (PR #5). Anonymous homepage still uses the env var. Check GitHub identity; skip `getUser` when the code gate is already open.
+- **Webhook secret is `configured_repos.webhook_secret`**, not a Railway env var. ATH-36 still needed for UI. Both repos’ GitHub hooks now point at `agamotto.up.railway.app/api/webhooks/github`.
+
+## Tickets Touched
+
+- **ATH-40**: Done. PRs #1–#3 rebrand/schema; #4 grants; #5 session skip. Linear closed.
+
+## What Was Tried and Abandoned
+
+- Pasting GRANT SQL in the dashboard: Andrew rejected — use a migration PR.
+- Treating `/queue` 200 as API health: HTML only; GET `/api/queue` uses service_role, add-repo uses `authenticated`.
+
+## Open Questions / Blockers
+
+- Smoke-test Start Review after Railway deploys #5. Manual queue add of a closed PR still shows OPEN until webhook/`CLOSED`.
+- ATH-36 webhook secret UI; `ACCESS_PASSWORDS` still set on Railway (homepage gate).
+
+## Next Steps
+
+1. Confirm queue Start Review 202 after #5 deploy.
+2. **ATH-20** self-hosting guide (`docs/SELF_HOSTING.md`).
+3. Optional: ATH-37 queue auto-refresh, ATH-30 queue → past review.
+
+## Key Files
+
+- `supabase/migrations/20260827000000_initial_agamotto_schema.sql`, `…10000_grant_agamotto_schema_privileges.sql`
+- `app/api/review/start/route.ts` — GitHub session vs access code
+- `.github/workflows/supabase-deploy.yml` — `db push` on main
+- Types: `src/types/database.types.ts` (not `src/lib/`)
+
+---
+
 # Session State — 2026-08-26 22:59
 
 ## Context
