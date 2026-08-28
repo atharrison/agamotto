@@ -5,7 +5,7 @@ Deploy your own Agamotto instance from scratch in under 30 minutes.
 ## Table of Contents
 
 1. [Prerequisites](#1-prerequisites)
-2. [Clone and install](#2-clone-and-install)
+2. [Fork and install](#2-fork-and-install)
 3. [Supabase setup](#3-supabase-setup)
 4. [GitHub OAuth App](#4-github-oauth-app)
 5. [Railway deployment](#5-railway-deployment)
@@ -35,10 +35,15 @@ Optional but recommended:
 
 ---
 
-## 2. Clone and install
+## 2. Fork and install
+
+**Fork the repo** on GitHub first — this is required so the GitHub Actions migration workflow runs under your own account and secrets.
+
+1. Go to [github.com/atharrison/agamotto](https://github.com/atharrison/agamotto) → **Fork**.
+2. Clone your fork locally:
 
 ```bash
-git clone https://github.com/atharrison/agamotto.git
+git clone https://github.com/<your-username>/agamotto.git
 cd agamotto
 nvm use          # picks up .nvmrc → Node 24
 npm install
@@ -46,6 +51,8 @@ npm run env:init
 ```
 
 Fill in `.env` as you complete the steps below. The app will refuse to start with a clear error listing any missing required variables.
+
+> **Local-only use** (no Railway deployment): a plain `git clone` of the upstream repo is fine — you just won't have GitHub Actions for migrations. Use `npm run db:migrate` locally instead.
 
 ---
 
@@ -64,8 +71,7 @@ Fill in `.env` as you complete the steps below. The app will refuse to start wit
 **Existing project:**
 
 1. Open your project in the Supabase dashboard.
-2. Confirm the `vector` extension is enabled: **Database → Extensions → pgvector** (Agamotto's migration enables it automatically if it isn't, but your Supabase plan must support it — all paid plans and the free tier do).
-3. Note your **project ref** (the ID in the dashboard URL) and **database password** — you'll need both for the migration step below.
+2. Note your **project ref** (the ID in the dashboard URL) and **database password** — you'll need both for the migration step below.
 
 ### 3b. Enable the GitHub OAuth provider
 
@@ -74,24 +80,7 @@ Fill in `.env` as you complete the steps below. The app will refuse to start wit
 3. Paste in your GitHub OAuth App **Client ID** and **Client Secret** (created in step 4).
 4. Copy the **Callback URL** shown — you'll paste it into your GitHub OAuth App.
 
-### 3c. Apply the database migration
-
-Agamotto uses a dedicated `agamotto` schema (not `public`). Migrations live in `supabase/migrations/` and are automatically applied on push to `main` via GitHub Actions.
-
-**For a fresh install**, apply them manually once. The Supabase CLI is already in `devDependencies` — use `npm run` scripts or `npx supabase` directly (no separate install needed):
-
-```bash
-# Link to your hosted project (project ref is in your Supabase dashboard URL:
-# https://supabase.com/dashboard/project/<PROJECT_REF>)
-npx supabase link --project-ref <YOUR_PROJECT_REF>
-
-# Push all migrations
-npm run db:migrate
-```
-
-Alternatively, paste the contents of `supabase/migrations/20260827000000_initial_agamotto_schema.sql` and `supabase/migrations/20260827010000_grant_agamotto_schema_privileges.sql` directly into the **SQL editor** in the Supabase dashboard (run them in order).
-
-### 3d. Copy your Supabase env vars
+### 3c. Copy your Supabase env vars
 
 From **Settings → API** in your Supabase project:
 
@@ -102,7 +91,7 @@ From **Settings → API** in your Supabase project:
 | `SUPABASE_SERVICE_ROLE_KEY`            | `service_role` key — keep secret                          |
 | `SUPABASE_PROJECT_REF`                 | The ID in your dashboard URL (for CLI and GitHub Actions) |
 
-### 3e. Set up GitHub Actions secrets (for automatic migration deploys)
+### 3d. Set up GitHub Actions secrets
 
 In your fork on GitHub, go to **Settings → Secrets and variables → Actions** and add:
 
@@ -112,7 +101,16 @@ In your fork on GitHub, go to **Settings → Secrets and variables → Actions**
 | `SUPABASE_PROJECT_REF`  | Your project ref                                                                            |
 | `SUPABASE_DB_PASSWORD`  | The database password you saved at project creation                                         |
 
-After this, any push to `main` that touches `supabase/migrations/` will automatically apply new migrations.
+### 3e. Apply the database migration
+
+Agamotto uses a dedicated `agamotto` schema (not `public`). Migrations are applied automatically by GitHub Actions on any push to `main` that touches `supabase/migrations/`.
+
+**For a fresh fork**, the migration files are already committed — a normal push won't retrigger the workflow. Trigger it manually once now that your secrets are in place:
+
+1. In your fork on GitHub, go to **Actions → Supabase Deploy**.
+2. Click **Run workflow → Run workflow**.
+
+No local CLI setup needed. Future migrations (when you pull updates from upstream) will apply automatically on merge to `main`.
 
 ---
 
@@ -149,8 +147,9 @@ Paste the **Client ID** and **Client Secret** into the Supabase GitHub provider 
 ### 5a. Create a Railway project
 
 1. Go to [railway.app](https://railway.app) → **New Project → Deploy from GitHub repo**.
-2. Select your fork of `atharrison/agamotto`.
-3. Railway will auto-detect it as a Next.js app.
+2. If prompted, authorize Railway to access your GitHub account. If Railway is already connected but your fork doesn't appear in the list, click **Configure** next to your GitHub account → find the agamotto fork under **Repository access** → grant access → save.
+3. Select your fork of `agamotto`.
+4. Railway will auto-detect it as a Next.js app.
 
 ### 5b. Set environment variables
 
@@ -179,7 +178,7 @@ NEXT_PUBLIC_SITE_URL=https://<your-railway-domain>
 
 ```
 OTEL_TRACES_EXPORTER=NONE
-ALLOWED_GITHUB_USERS=yourgithubusername
+ALLOWED_GITHUB_USERS=alice,bob,carol   # comma-separated GitHub usernames
 ```
 
 See the [full reference table](#8-environment-variable-reference) for all variables.
@@ -210,15 +209,27 @@ Then open the app root and sign in with GitHub.
 
 Webhooks let Agamotto receive push notifications when PRs are opened, updated, or closed — instead of relying on manual queue entry.
 
+> **Why this comes after deployment and repo configuration**: the webhook needs your Railway domain (available after step 5) for the payload URL, and a per-repo webhook secret (generated in step 7) for the HMAC signature. Complete steps 5 and 7 first, then return here for each repo you want to monitor.
+
 For each GitHub repo you want Agamotto to monitor:
 
-### 6a. Get the webhook secret
+### 6a. Generate and store the webhook secret
 
-The webhook secret is stored per-repo in the `configured_repos` table (set when you add the repo in step 7). After adding the repo:
+Each repo needs its own secret for GitHub to sign webhook payloads. Generate one:
 
-1. In your Agamotto app, go to **Queue → Settings**.
-2. Find the repo row — the webhook secret is displayed there.
-3. Copy it.
+```bash
+npm run webhook:secret
+```
+
+Copy the output. Then:
+
+1. In the Supabase dashboard, open **Table Editor → agamotto → configured_repos**.
+2. Find the row for this repo and paste the secret into the `webhook_secret` column.
+3. Save the row.
+
+Keep the secret handy — you'll paste it into GitHub in the next step.
+
+> <!-- TODO: update this section when webhook secret is auto-generated from the Queue → Settings page -->
 
 ### 6b. Create the webhook in GitHub
 
