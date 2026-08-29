@@ -10,6 +10,7 @@ import type {
   CodeChunk,
   PRMetadata,
 } from './store'
+import { reviewHistoryFields } from '../lib/review-history-payload'
 
 function dbPath(): string {
   return (
@@ -135,7 +136,7 @@ export class LocalMemoryStore implements MemoryStore {
   }
 
   storeReview(review: unknown, metadata: PRMetadata): Promise<void> {
-    const reviewObj = review as { summary?: string; findings?: unknown[] }
+    const { summary, findingCount } = reviewHistoryFields(review)
     this.db
       .prepare(
         `INSERT INTO review_history
@@ -149,8 +150,8 @@ export class LocalMemoryStore implements MemoryStore {
         metadata.prTitle,
         metadata.author,
         new Date().toISOString(),
-        Array.isArray(reviewObj?.findings) ? reviewObj.findings.length : 0,
-        reviewObj?.summary ?? '',
+        findingCount,
+        summary,
         JSON.stringify(review)
       )
     return Promise.resolve()

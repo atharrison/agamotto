@@ -2,6 +2,47 @@
 
 ---
 
+# Session State — 2026-08-27 23:59
+
+## Context
+
+ATH-30 (queue View Review + sibling pager) merged as PR #7; Andrew closed the ticket Done. On `main`. Two Agamotto review passes on the PR; convention nits landed, most “blockers” were already implemented.
+
+## Decisions Made
+
+- **View Review is not REVIEWED-only**: `viewReviewHref` needs `last_review_id` and excludes `IN_REVIEW` only. OPEN (updated-since-review) and CLOSED/merged still link. Linking IN_REVIEW would re-enter the live pipeline.
+- **Pager is review-page only**: `listCompleteReviewIdsForPr` once on `/review/[id]` (`select('id')`, `created_at ASC`). Queue does not JOIN or N+1.
+- **COMPLETE hydrate is server `storedResult`**: skip EventSource when set. `getReview` stays `select('*')` because replay needs `result`. `ReviewShell key={reviewId}` remounts on Older/Newer (Next.js can reuse client state).
+- **Agamotto review N+1 / Map-cache / pagination / RTL** on this PR: declined with evidence. No React Jest in this repo.
+
+## Tickets Touched
+
+- **ATH-30**: Done ✅ — PR #7. Replies: `#issuecomment-5448534690`, `#issuecomment-5448590961`.
+- **ATH-18**: still open — per-PR finding history on re-review, not just `search_past_reviews` in the prompt.
+
+## What Was Tried and Abandoned
+
+- Extra queue JOIN to prove `last_review_id` is COMPLETE: rejected — IN_REVIEW already hides the live id; join is the N+1 the bot also flagged.
+
+## Open Questions / Blockers
+
+- Track PR (`POST /api/queue`) does not backfill `last_review_id` from existing `reviews` rows (local PR #3: CLOSED, no reviews).
+- Local DB has no prod GitHub comments; pager demo was local PR #6 (2 COMPLETE rows).
+
+## Next Steps
+
+1. ATH-19 (`/history`).
+2. ATH-18 (per-PR prior findings on re-review).
+3. Quality ATH-35 / ATH-39; then ATH-32. Backlog: ATH-42, ATH-41, ATH-37.
+
+## Key Files
+
+- `src/lib/tracked-prs.ts` (`viewReviewHref`), `src/lib/review-siblings.ts`, `src/lib/stored-review-ui.ts`, `src/lib/review-stream.ts`
+- `src/memory/review-store.ts` (`listCompleteReviewIdsForPr`)
+- `app/queue/QueueDisplay.tsx`, `app/review/[id]/page.tsx` (`key={reviewId}`), `ReviewShell.tsx`
+
+---
+
 # Session State — 2026-08-27 22:23
 
 ## Context

@@ -4,6 +4,16 @@ import type { ModelClient, ModelReply } from '../src/harness/models'
 import { InMemoryCheckpointStore } from '../src/harness/checkpoints'
 import type { ToolRegistry } from '../src/harness/tools'
 import { dispatch } from '../src/harness/tools'
+import { listCompleteReviewsForPr } from '../src/memory/review-store'
+
+jest.mock('../src/memory/review-store', () => ({
+  listCompleteReviewsForPr: jest.fn().mockResolvedValue([]),
+}))
+
+const mockListCompleteReviewsForPr =
+  listCompleteReviewsForPr as jest.MockedFunction<
+    typeof listCompleteReviewsForPr
+  >
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -47,6 +57,8 @@ describe('runReview (coordinator)', () => {
 
   beforeEach(() => {
     callCount = 0
+    mockListCompleteReviewsForPr.mockReset()
+    mockListCompleteReviewsForPr.mockResolvedValue([])
     mockModel = {
       chat: jest.fn(async (_messages, _tools, _systemPrompt) => {
         callCount++
@@ -101,6 +113,14 @@ describe('runReview (coordinator)', () => {
     expect(['APPROVE', 'REQUEST_CHANGES', 'COMMENT']).toContain(review.verdict)
     expect(events.some(e => e.event === 'done')).toBe(true)
     expect(events.some(e => e.event === 'checkpoint')).toBe(true)
+    expect(events).toContainEqual({
+      event: 'progress',
+      data: {
+        tool: 'prior_rounds',
+        args: { roundCount: 0, findingCount: 0 },
+        label: 'No prior review rounds',
+      },
+    })
   })
 
   it('emits the SSE done event at the end', async () => {
@@ -161,6 +181,120 @@ describe('runReview (coordinator)', () => {
         mode: 'quick',
         context,
         // emit not provided — defaults to no-op
+      })
+    ).resolves.toBeDefined()
+  })
+
+  it('injects priorRounds into domain-agent context on re-review', async () => {
+    mockListCompleteReviewsForPr.mockResolvedValue([
+      {
+        id: 'rev-old',
+        created_at: '2026-08-16T00:00:00Z',
+        result: {
+          summary: 'Auth callback leak',
+          blockingIssues: [
+            {
+              id: 'f1',
+              severity: 'BLOCKING',
+              category: 'SECURITY',
+              file: 'src/auth.ts',
+              line: 10,
+              title: 'Token not cleared on reject',
+              body: 'should not appear',
+              confidence: 0.9,
+            },
+          ],
+          suggestions: [],
+          nits: [],
+        },
+        submission: {
+          decisions: [{ findingId: 'f1', action: 'ACCEPT' }],
+        },
+      },
+    ])
+    const context = makeContext()
+    const emit = jest.fn()
+    const logs: string[] = []
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(msg => {
+      logs.push(String(msg))
+    })
+
+    await runReview({
+      reviewId: 'test-rev-6',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      mode: 'quick',
+      context,
+      emit,
+    })
+
+    logSpy.mockRestore()
+
+    expect(mockListCompleteReviewsForPr).toHaveBeenCalledWith(
+      'https://github.com/owner/repo/pull/1',
+      { excludeId: 'test-rev-6', limit: 3 }
+    )
+    const userContents = (mockModel.chat as jest.Mock).mock.calls.map(
+      call => call[0][0].content as string
+    )
+    expect(
+      userContents.some(c => c.includes('Token not cleared on reject'))
+    ).toBe(true)
+    expect(userContents.some(c => c.includes('"action": "ACCEPT"'))).toBe(true)
+    expect(userContents.some(c => c.includes('should not appear'))).toBe(false)
+    expect(emit).toHaveBeenCalledWith('progress', {
+      tool: 'prior_rounds',
+      args: { roundCount: 1, findingCount: 1 },
+      label: 'Loaded 1 prior finding from 1 round of this PR',
+    })
+    const loaded = logs
+      .map(l => {
+        try {
+          return JSON.parse(l) as {
+            prior_rounds_loaded?: {
+              roundCount: number
+              findingCount: number
+              titles: string[]
+            }
+          }
+        } catch {
+          return {}
+        }
+      })
+      .find(o => o.prior_rounds_loaded)
+    expect(loaded?.prior_rounds_loaded).toMatchObject({
+      roundCount: 1,
+      findingCount: 1,
+      titles: ['Token not cleared on reject'],
+    })
+    expect(
+      logs.some(l => {
+        try {
+          const parsed = JSON.parse(l) as {
+            harness_run_complete?: {
+              priorRounds: number
+              priorFindings: number
+            }
+          }
+          return (
+            parsed.harness_run_complete?.priorRounds === 1 &&
+            parsed.harness_run_complete?.priorFindings === 1
+          )
+        } catch {
+          return false
+        }
+      })
+    ).toBe(true)
+  })
+
+  it('continues the review when prior-round load fails', async () => {
+    mockListCompleteReviewsForPr.mockRejectedValue(new Error('DB down'))
+    const context = makeContext()
+    await expect(
+      runReview({
+        reviewId: 'test-rev-7',
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        mode: 'quick',
+        context,
       })
     ).resolves.toBeDefined()
   })

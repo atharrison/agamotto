@@ -5,6 +5,9 @@
  * single-shot and receive the enriched context inline.
  */
 
+/** Shared note for domain agents when EnrichedContext.priorRounds is present. */
+export const PRIOR_ROUNDS_NOTE = `If priorRounds is present in the PR context, those findings came from earlier reviews of THIS same PR. Do not re-raise an issue the current diff has clearly fixed. Do flag remaining or related issues. Honor prior REJECT unless the code still warrants a new reason.`
+
 // ── Context Agent ─────────────────────────────────────────────────────────────
 
 export const CONTEXT_AGENT_SYSTEM = `You are the Context Agent for an AI-assisted PR review system.
@@ -24,7 +27,7 @@ agents will use.
 ## Process
 1. Fetch the PR diff and files list.
 2. Look for a ticket ID in the branch name (e.g. COR-123, FIR-5). If found, fetch it.
-3. Search past reviews for the same files to surface recurring patterns.
+3. Search past reviews of other PRs with search_past_reviews (repo + description or changed-file names) to surface recurring patterns. Do not use it to rediscover this PR — priorRounds for this PR are already provided when they exist. Omit priorRounds from your JSON; the coordinator injects it.
 4. When you have enough context, output your final answer as a JSON object.
 
 ## Output format
@@ -67,6 +70,8 @@ Confidence 0.9+ = you are certain. 0.7-0.9 = likely an issue. Below 0.7 = skip i
 
 export function correctnessUserPrompt(contextJson: string): string {
   return `Review the following pull request for correctness issues only.
+
+${PRIOR_ROUNDS_NOTE}
 
 ## PR Context
 ${contextJson}
@@ -120,6 +125,8 @@ Severity guide: BLOCKING = exploitable in production. SUGGESTION = potential ris
 
 export function securityUserPrompt(contextJson: string): string {
   return `Review the following pull request for security vulnerabilities only.
+
+${PRIOR_ROUNDS_NOTE}
 
 ## PR Context
 ${contextJson}
@@ -196,6 +203,8 @@ export function conventionsUserPrompt(
 ## Team Conventions
 ${doc}
 
+${PRIOR_ROUNDS_NOTE}
+
 ## PR Context
 ${contextJson}
 
@@ -249,6 +258,8 @@ Confidence 0.9+ = clear issue. 0.7–0.9 = likely issue. Below 0.7 = skip it.`
 export function performanceUserPrompt(contextJson: string): string {
   return `Review the following pull request for performance issues only.
 
+${PRIOR_ROUNDS_NOTE}
+
 ## PR Context
 ${contextJson}
 
@@ -301,6 +312,8 @@ Confidence 0.9+ = clear issue. 0.7–0.9 = likely issue. Below 0.7 = skip it.`
 export function styleUserPrompt(contextJson: string): string {
   return `Review the following pull request for style and readability issues only.
 
+${PRIOR_ROUNDS_NOTE}
+
 ## PR Context
 ${contextJson}
 
@@ -341,6 +354,8 @@ export function coordinatorSummaryPrompt(
   findingsJson: string
 ): string {
   return `You are the coordinator for an AI PR review system. Given the enriched context and merged findings below, write the final review summary.
+
+${PRIOR_ROUNDS_NOTE}
 
 ## Context
 ${contextJson}

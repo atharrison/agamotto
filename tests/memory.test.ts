@@ -51,6 +51,32 @@ describe('LocalMemoryStore', () => {
     expect(results[0].findingCount).toBe(3)
   })
 
+  it('unwraps finalize { review, submission } so finding_count and summary are searchable', async () => {
+    await store.storeReview(
+      {
+        review: {
+          summary: 'Token leak in OAuth callback',
+          blockingIssues: [{ id: 'f1' }, { id: 'f2' }],
+          suggestions: [],
+          nits: [],
+        },
+        submission: { reviewId: 'rev-1', decisions: [], postToGitHub: false },
+      },
+      {
+        prUrl: 'https://github.com/org/repo/pull/2',
+        repoName: 'org/repo',
+        prTitle: 'Fix OAuth callback',
+        author: 'alice',
+        prNumber: 2,
+      }
+    )
+
+    const results = await store.searchReviews('Token leak')
+    expect(results).toHaveLength(1)
+    expect(results[0].findingCount).toBe(2)
+    expect(results[0].summary).toBe('Token leak in OAuth callback')
+  })
+
   it('returns empty array for searchReviews with no match', async () => {
     const results = await store.searchReviews('nonexistent-xyz')
     expect(results).toHaveLength(0)

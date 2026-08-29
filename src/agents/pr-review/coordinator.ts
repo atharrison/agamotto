@@ -10,6 +10,14 @@ import { runStyleAgent } from './style-agent'
 import { mergeResults, bucketFindings } from './merge'
 import { coordinatorSummaryPrompt } from './prompts'
 import { withSpan } from '../../harness/observability'
+import { listCompleteReviewsForPr } from '../../memory/review-store'
+import {
+  MAX_PRIOR_ROUNDS,
+  formatPriorRounds,
+  priorRoundStats,
+  formatPriorRoundsActivity,
+  type PriorRound,
+} from '../../lib/prior-rounds'
 
 // ── Public interface ──────────────────────────────────────────────────────────
 
@@ -72,6 +80,27 @@ async function _runReview(
   let totalCost = 0
   const phaseDurations: Record<string, number> = {}
 
+  const priorRounds = await loadPriorRounds(prUrl, reviewId)
+  const { roundCount, findingCount: priorFindingCount } =
+    priorRoundStats(priorRounds)
+  const priorLabel = formatPriorRoundsActivity(roundCount, priorFindingCount)
+  console.log(
+    JSON.stringify({
+      prior_rounds_loaded: {
+        reviewId,
+        prUrl,
+        roundCount,
+        findingCount: priorFindingCount,
+        titles: priorRounds.flatMap(r => r.findings.map(f => f.title)),
+      },
+    })
+  )
+  emit('progress', {
+    tool: 'prior_rounds',
+    args: { roundCount, findingCount: priorFindingCount },
+    label: priorLabel,
+  })
+
   // ── INPUT checkpoint ──────────────────────────────────────────────────────
   const inputStart = Date.now()
   await withSpan(
@@ -113,6 +142,7 @@ async function _runReview(
       ticketAcceptanceCriteria: [],
       pastReviewSummaries: [],
       memories: [],
+      priorRounds,
       externalContextCalls: 0,
     }
   } else {
@@ -130,6 +160,7 @@ async function _runReview(
               reviewId,
               context,
               emit,
+              priorRounds,
             })
             const pass = Boolean(
               result.context.diff || result.context.filesChanged.length > 0
@@ -151,7 +182,7 @@ async function _runReview(
         return r
       }
     )
-    enrichedContext = ctxResult.context
+    enrichedContext = { ...ctxResult.context, priorRounds }
     totalTokens += ctxResult.tokensUsed
     totalCost += ctxResult.cost
     emit('checkpoint', { stage: 'CONTEXT', status: 'PASS', reviewId })
@@ -339,6 +370,8 @@ async function _runReview(
     'tokens.total': totalTokens,
     'cost.usd': estimatedCostUsd,
     'findings.count': findingsCount,
+    'prior.rounds': roundCount,
+    'prior.findings': priorFindingCount,
     'duration.ms': durationMs,
     'review.verdict': review.verdict,
   })
@@ -349,6 +382,8 @@ async function _runReview(
     estimatedCostUsd,
     durationMs,
     findingsCount,
+    priorRounds: roundCount,
+    priorFindings: priorFindingCount,
     phaseDurations,
   })
 
@@ -365,6 +400,8 @@ async function _runReview(
         estimatedCostUsd,
         durationMs,
         findingsCount,
+        priorRounds: roundCount,
+        priorFindings: priorFindingCount,
         phaseDurations,
       },
     })
@@ -428,4 +465,24 @@ function parseSummary(text: string, ctx: EnrichedContext): SummaryData {
 
 function isVerdict(v: unknown): v is PRReview['verdict'] {
   return v === 'APPROVE' || v === 'REQUEST_CHANGES' || v === 'COMMENT'
+}
+
+/**
+ * Load compact prior-round findings for this PR. Empty on first review or
+ * if the reviews table is unreachable — never fail the pipeline.
+ */
+async function loadPriorRounds(
+  prUrl: string,
+  reviewId: string
+): Promise<PriorRound[]> {
+  try {
+    const rows = await listCompleteReviewsForPr(prUrl, {
+      excludeId: reviewId,
+      limit: MAX_PRIOR_ROUNDS,
+    })
+    return formatPriorRounds(rows)
+  } catch (err) {
+    console.warn(`[coordinator][${reviewId}] prior rounds load failed:`, err)
+    return []
+  }
 }

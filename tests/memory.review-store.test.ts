@@ -18,6 +18,7 @@ import {
   failReview,
   getReview,
   listCompleteReviewIdsForPr,
+  listCompleteReviewsForPr,
   setReviewSubmission,
 } from '../src/memory/review-store'
 import type { PRReview } from '../src/agents/pr-review/schema'
@@ -27,7 +28,16 @@ const mockCreateClient = createClient as jest.Mock
 // Build a chainable Supabase query mock. `result` is what the final await resolves to.
 function makeChain(result: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {}
-  for (const m of ['from', 'insert', 'update', 'select', 'eq', 'order']) {
+  for (const m of [
+    'from',
+    'insert',
+    'update',
+    'select',
+    'eq',
+    'neq',
+    'order',
+    'limit',
+  ]) {
     chain[m] = jest.fn().mockReturnValue(chain)
   }
   chain.single = jest.fn().mockResolvedValue(result)
@@ -168,6 +178,66 @@ describe('listCompleteReviewIdsForPr', () => {
     await expect(
       listCompleteReviewIdsForPr('https://github.com/a/b/pull/1')
     ).rejects.toThrow('listCompleteReviewIdsForPr failed')
+  })
+})
+
+describe('listCompleteReviewsForPr', () => {
+  it('returns newest-first COMPLETE rows with result and submission', async () => {
+    const chain = makeChain({
+      data: [
+        {
+          id: 'rev-new',
+          created_at: '2026-08-18T00:00:00Z',
+          result: { summary: 'round 2' },
+          submission: { decisions: [] },
+        },
+      ],
+      error: null,
+    })
+    mockCreateClient.mockReturnValue(chain)
+    const rows = await listCompleteReviewsForPr(
+      'https://github.com/a/b/pull/1',
+      { excludeId: 'rev-current', limit: 3 }
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0].id).toBe('rev-new')
+    expect(chain.select).toHaveBeenCalledWith(
+      'id, created_at, result, submission'
+    )
+    expect(chain.eq).toHaveBeenCalledWith(
+      'pr_url',
+      'https://github.com/a/b/pull/1'
+    )
+    expect(chain.eq).toHaveBeenCalledWith('status', 'COMPLETE')
+    expect(chain.neq).toHaveBeenCalledWith('id', 'rev-current')
+    expect(chain.order).toHaveBeenCalledWith('created_at', {
+      ascending: false,
+    })
+    expect(chain.limit).toHaveBeenCalledWith(3)
+  })
+
+  it('omits neq when excludeId is not provided', async () => {
+    const chain = makeChain({ data: [], error: null })
+    mockCreateClient.mockReturnValue(chain)
+    await listCompleteReviewsForPr('https://github.com/a/b/pull/1')
+    expect(chain.neq).not.toHaveBeenCalled()
+    expect(chain.limit).toHaveBeenCalledWith(3)
+  })
+
+  it('returns [] when the query has no rows', async () => {
+    mockCreateClient.mockReturnValue(makeChain({ data: null, error: null }))
+    await expect(
+      listCompleteReviewsForPr('https://github.com/a/b/pull/1')
+    ).resolves.toEqual([])
+  })
+
+  it('throws when Supabase returns an error', async () => {
+    mockCreateClient.mockReturnValue(
+      makeChain({ data: null, error: { message: 'DB error' } })
+    )
+    await expect(
+      listCompleteReviewsForPr('https://github.com/a/b/pull/1')
+    ).rejects.toThrow('listCompleteReviewsForPr failed')
   })
 })
 

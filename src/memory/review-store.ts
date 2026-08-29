@@ -10,6 +10,10 @@
 import { createClient } from '@supabase/supabase-js'
 import type { PRReview } from '../agents/pr-review/schema'
 import { AGAMOTTO_SCHEMA } from '../lib/supabase/schema'
+import {
+  MAX_PRIOR_ROUNDS,
+  type CompleteReviewSource,
+} from '../lib/prior-rounds'
 
 function createSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -117,6 +121,32 @@ export async function listCompleteReviewIdsForPr(
   if (error)
     throw new Error(`listCompleteReviewIdsForPr failed: ${error.message}`)
   return ((data ?? []) as { id: string }[]).map(row => row.id)
+}
+
+/**
+ * Newest COMPLETE reviews for a PR (result + submission).
+ * Always filters `status = COMPLETE` and optionally `id != excludeId`
+ * (AND, not OR) so the current RUNNING row cannot leak in.
+ */
+export async function listCompleteReviewsForPr(
+  prUrl: string,
+  options?: { excludeId?: string; limit?: number }
+): Promise<CompleteReviewSource[]> {
+  const limit = options?.limit ?? MAX_PRIOR_ROUNDS
+  let query = createSupabaseClient()
+    .from('reviews')
+    .select('id, created_at, result, submission')
+    .eq('pr_url', prUrl)
+    .eq('status', ReviewStatus.COMPLETE)
+  if (options?.excludeId) {
+    query = query.neq('id', options.excludeId)
+  }
+  const { data, error } = await query
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error)
+    throw new Error(`listCompleteReviewsForPr failed: ${error.message}`)
+  return (data ?? []) as CompleteReviewSource[]
 }
 
 /** Persist the user's finalize submission against the review row. */

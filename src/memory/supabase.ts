@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'crypto'
 import { AGAMOTTO_SCHEMA } from '../lib/supabase/schema'
+import { reviewHistoryFields } from '../lib/review-history-payload'
 import type {
   MemoryStore,
   Memory,
@@ -90,7 +91,7 @@ export class SupabaseMemoryStore implements MemoryStore {
   }
 
   async storeReview(review: unknown, metadata: PRMetadata): Promise<void> {
-    const reviewObj = review as { summary?: string; findings?: unknown[] }
+    const { summary, findingCount } = reviewHistoryFields(review)
     const { error } = await this.client.from('review_history').insert({
       id: randomUUID(),
       pr_url: metadata.prUrl,
@@ -98,10 +99,8 @@ export class SupabaseMemoryStore implements MemoryStore {
       pr_title: metadata.prTitle,
       author: metadata.author,
       reviewed_at: new Date().toISOString(),
-      finding_count: Array.isArray(reviewObj?.findings)
-        ? reviewObj.findings.length
-        : 0,
-      summary: reviewObj?.summary ?? '',
+      finding_count: findingCount,
+      summary,
       raw_json: JSON.stringify(review),
     })
     if (error) throw new Error(`storeReview failed: ${error.message}`)
