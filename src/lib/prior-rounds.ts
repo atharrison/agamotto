@@ -161,3 +161,12 @@ export function priorRoundStats(rounds: PriorRound[]): {
     findingCount: rounds.reduce((n, r) => n + r.findings.length, 0),
   }
 }
+
+/** Activity-feed line for prior-round injection. */
+export function formatPriorRoundsActivity(
+  roundCount: number,
+  findingCount: number
+): string {
+  if (roundCount === 0) return 'No prior review rounds'
+  return `Loaded ${findingCount} prior finding${findingCount === 1 ? '' : 's'} from ${roundCount} round${roundCount === 1 ? '' : 's'} of this PR`
+}

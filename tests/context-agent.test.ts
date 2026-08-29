@@ -37,7 +37,11 @@ describe('buildContextAgentUserMessage', () => {
     )
     expect(msg).toContain('Prior rounds of THIS pull request')
     expect(msg).toContain('Token not cleared on reject')
-    expect(msg).toContain('Copy priorRounds into EnrichedContext as-is')
+    expect(msg).toContain(
+      'do not include priorRounds in your EnrichedContext JSON'
+    )
+    expect(msg).toContain('<prior_rounds>')
+    expect(msg).not.toContain('Copy priorRounds into EnrichedContext as-is')
   })
 })
 
@@ -46,6 +50,7 @@ describe('CONTEXT_AGENT_SYSTEM', () => {
     expect(CONTEXT_AGENT_SYSTEM).toContain('search_past_reviews')
     expect(CONTEXT_AGENT_SYSTEM).toContain('other PRs')
     expect(CONTEXT_AGENT_SYSTEM).toContain('priorRounds')
+    expect(CONTEXT_AGENT_SYSTEM).toContain('Omit priorRounds from your JSON')
   })
 })
 

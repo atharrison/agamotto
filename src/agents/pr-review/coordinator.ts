@@ -15,6 +15,7 @@ import {
   MAX_PRIOR_ROUNDS,
   formatPriorRounds,
   priorRoundStats,
+  formatPriorRoundsActivity,
   type PriorRound,
 } from '../../lib/prior-rounds'
 
@@ -82,6 +83,7 @@ async function _runReview(
   const priorRounds = await loadPriorRounds(prUrl, reviewId)
   const { roundCount, findingCount: priorFindingCount } =
     priorRoundStats(priorRounds)
+  const priorLabel = formatPriorRoundsActivity(roundCount, priorFindingCount)
   console.log(
     JSON.stringify({
       prior_rounds_loaded: {
@@ -96,6 +98,7 @@ async function _runReview(
   emit('progress', {
     tool: 'prior_rounds',
     args: { roundCount, findingCount: priorFindingCount },
+    label: priorLabel,
   })
 
   // ── INPUT checkpoint ──────────────────────────────────────────────────────

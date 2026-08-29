@@ -124,8 +124,9 @@ export async function listCompleteReviewIdsForPr(
 }
 
 /**
- * Newest COMPLETE reviews for a PR (result + submission), excluding the
- * current run. Used to inject priorRounds on re-review (ATH-18).
+ * Newest COMPLETE reviews for a PR (result + submission).
+ * Always filters `status = COMPLETE` and optionally `id != excludeId`
+ * (AND, not OR) so the current RUNNING row cannot leak in.
  */
 export async function listCompleteReviewsForPr(
   prUrl: string,

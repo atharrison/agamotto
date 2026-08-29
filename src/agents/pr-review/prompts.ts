@@ -27,7 +27,7 @@ agents will use.
 ## Process
 1. Fetch the PR diff and files list.
 2. Look for a ticket ID in the branch name (e.g. COR-123, FIR-5). If found, fetch it.
-3. Search past reviews of other PRs with search_past_reviews (repo + description or changed-file names) to surface recurring patterns. Do not use it to rediscover this PR — priorRounds for this PR are already provided when they exist.
+3. Search past reviews of other PRs with search_past_reviews (repo + description or changed-file names) to surface recurring patterns. Do not use it to rediscover this PR — priorRounds for this PR are already provided when they exist. Omit priorRounds from your JSON; the coordinator injects it.
 4. When you have enough context, output your final answer as a JSON object.
 
 ## Output format
@@ -45,7 +45,6 @@ Use exactly this shape:
   "ticketSummary": "<string or omit if none>",
   "ticketAcceptanceCriteria": ["<string>", ...],
   "pastReviewSummaries": ["<string>", ...],
-  "priorRounds": [],
   "memories": [],
   "externalContextCalls": 0
 }

@@ -7,6 +7,7 @@ import {
   type StoredReviewPayload,
 } from '../../../src/lib/stored-review-ui'
 import type { SiblingReviewNav } from '../../../src/lib/review-siblings'
+import { formatPriorRoundsActivity } from '../../../src/lib/prior-rounds'
 
 interface Finding {
   id: string
@@ -65,12 +66,11 @@ function formatTool(tool: string, args: Record<string, unknown>): string {
       return `Fetching ticket ${args.ticketId ?? ''}…`
     case 'search_past_reviews':
       return `Searching history: ${args.file ?? ''}…`
-    case 'prior_rounds': {
-      const rounds = Number(args.roundCount ?? 0)
-      const findings = Number(args.findingCount ?? 0)
-      if (rounds === 0) return 'No prior rounds of this PR'
-      return `Loaded ${findings} prior finding${findings === 1 ? '' : 's'} from ${rounds} round${rounds === 1 ? '' : 's'} of this PR`
-    }
+    case 'prior_rounds':
+      return formatPriorRoundsActivity(
+        Number(args.roundCount ?? 0),
+        Number(args.findingCount ?? 0)
+      )
     default:
       return tool.replace(/_/g, ' ') + '…'
   }
@@ -227,10 +227,13 @@ export function ReviewShell({
       const data = JSON.parse(e.data)
       addActivity({
         type: 'tool',
-        text: formatTool(
-          data.tool,
-          (data.args ?? {}) as Record<string, unknown>
-        ),
+        text:
+          typeof data.label === 'string'
+            ? data.label
+            : formatTool(
+                data.tool,
+                (data.args ?? {}) as Record<string, unknown>
+              ),
       })
     })
 

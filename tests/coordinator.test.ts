@@ -113,6 +113,14 @@ describe('runReview (coordinator)', () => {
     expect(['APPROVE', 'REQUEST_CHANGES', 'COMMENT']).toContain(review.verdict)
     expect(events.some(e => e.event === 'done')).toBe(true)
     expect(events.some(e => e.event === 'checkpoint')).toBe(true)
+    expect(events).toContainEqual({
+      event: 'progress',
+      data: {
+        tool: 'prior_rounds',
+        args: { roundCount: 0, findingCount: 0 },
+        label: 'No prior review rounds',
+      },
+    })
   })
 
   it('emits the SSE done event at the end', async () => {
@@ -236,6 +244,7 @@ describe('runReview (coordinator)', () => {
     expect(emit).toHaveBeenCalledWith('progress', {
       tool: 'prior_rounds',
       args: { roundCount: 1, findingCount: 1 },
+      label: 'Loaded 1 prior finding from 1 round of this PR',
     })
     const loaded = logs
       .map(l => {

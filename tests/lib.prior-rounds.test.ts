@@ -3,6 +3,7 @@ import {
   PriorFindingAction,
   formatPriorRounds,
   priorRoundStats,
+  formatPriorRoundsActivity,
   type CompleteReviewSource,
 } from '../src/lib/prior-rounds'
 
@@ -231,5 +232,20 @@ describe('priorRoundStats', () => {
         },
       ])
     ).toEqual({ roundCount: 2, findingCount: 3 })
+  })
+})
+
+describe('formatPriorRoundsActivity', () => {
+  it('says there are no prior review rounds when roundCount is 0', () => {
+    expect(formatPriorRoundsActivity(0, 0)).toBe('No prior review rounds')
+  })
+
+  it('summarizes loaded findings on a re-review', () => {
+    expect(formatPriorRoundsActivity(1, 1)).toBe(
+      'Loaded 1 prior finding from 1 round of this PR'
+    )
+    expect(formatPriorRoundsActivity(2, 4)).toBe(
+      'Loaded 4 prior findings from 2 rounds of this PR'
+    )
   })
 })
