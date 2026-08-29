@@ -10,6 +10,12 @@ import { runStyleAgent } from './style-agent'
 import { mergeResults, bucketFindings } from './merge'
 import { coordinatorSummaryPrompt } from './prompts'
 import { withSpan } from '../../harness/observability'
+import { listCompleteReviewsForPr } from '../../memory/review-store'
+import {
+  MAX_PRIOR_ROUNDS,
+  formatPriorRounds,
+  type PriorRound,
+} from '../../lib/prior-rounds'
 
 // ── Public interface ──────────────────────────────────────────────────────────
 
@@ -72,6 +78,8 @@ async function _runReview(
   let totalCost = 0
   const phaseDurations: Record<string, number> = {}
 
+  const priorRounds = await loadPriorRounds(prUrl, reviewId)
+
   // ── INPUT checkpoint ──────────────────────────────────────────────────────
   const inputStart = Date.now()
   await withSpan(
@@ -113,6 +121,7 @@ async function _runReview(
       ticketAcceptanceCriteria: [],
       pastReviewSummaries: [],
       memories: [],
+      priorRounds,
       externalContextCalls: 0,
     }
   } else {
@@ -130,6 +139,7 @@ async function _runReview(
               reviewId,
               context,
               emit,
+              priorRounds,
             })
             const pass = Boolean(
               result.context.diff || result.context.filesChanged.length > 0
@@ -151,7 +161,7 @@ async function _runReview(
         return r
       }
     )
-    enrichedContext = ctxResult.context
+    enrichedContext = { ...ctxResult.context, priorRounds }
     totalTokens += ctxResult.tokensUsed
     totalCost += ctxResult.cost
     emit('checkpoint', { stage: 'CONTEXT', status: 'PASS', reviewId })
@@ -428,4 +438,24 @@ function parseSummary(text: string, ctx: EnrichedContext): SummaryData {
 
 function isVerdict(v: unknown): v is PRReview['verdict'] {
   return v === 'APPROVE' || v === 'REQUEST_CHANGES' || v === 'COMMENT'
+}
+
+/**
+ * Load compact prior-round findings for this PR. Empty on first review or
+ * if the reviews table is unreachable — never fail the pipeline.
+ */
+async function loadPriorRounds(
+  prUrl: string,
+  reviewId: string
+): Promise<PriorRound[]> {
+  try {
+    const rows = await listCompleteReviewsForPr(prUrl, {
+      excludeId: reviewId,
+      limit: MAX_PRIOR_ROUNDS,
+    })
+    return formatPriorRounds(rows)
+  } catch (err) {
+    console.warn(`[coordinator][${reviewId}] prior rounds load failed:`, err)
+    return []
+  }
 }

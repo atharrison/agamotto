@@ -4,6 +4,16 @@ import type { ModelClient, ModelReply } from '../src/harness/models'
 import { InMemoryCheckpointStore } from '../src/harness/checkpoints'
 import type { ToolRegistry } from '../src/harness/tools'
 import { dispatch } from '../src/harness/tools'
+import { listCompleteReviewsForPr } from '../src/memory/review-store'
+
+jest.mock('../src/memory/review-store', () => ({
+  listCompleteReviewsForPr: jest.fn().mockResolvedValue([]),
+}))
+
+const mockListCompleteReviewsForPr =
+  listCompleteReviewsForPr as jest.MockedFunction<
+    typeof listCompleteReviewsForPr
+  >
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -47,6 +57,8 @@ describe('runReview (coordinator)', () => {
 
   beforeEach(() => {
     callCount = 0
+    mockListCompleteReviewsForPr.mockReset()
+    mockListCompleteReviewsForPr.mockResolvedValue([])
     mockModel = {
       chat: jest.fn(async (_messages, _tools, _systemPrompt) => {
         callCount++
@@ -161,6 +173,69 @@ describe('runReview (coordinator)', () => {
         mode: 'quick',
         context,
         // emit not provided — defaults to no-op
+      })
+    ).resolves.toBeDefined()
+  })
+
+  it('injects priorRounds into domain-agent context on re-review', async () => {
+    mockListCompleteReviewsForPr.mockResolvedValue([
+      {
+        id: 'rev-old',
+        created_at: '2026-08-16T00:00:00Z',
+        result: {
+          summary: 'Auth callback leak',
+          blockingIssues: [
+            {
+              id: 'f1',
+              severity: 'BLOCKING',
+              category: 'SECURITY',
+              file: 'src/auth.ts',
+              line: 10,
+              title: 'Token not cleared on reject',
+              body: 'should not appear',
+              confidence: 0.9,
+            },
+          ],
+          suggestions: [],
+          nits: [],
+        },
+        submission: {
+          decisions: [{ findingId: 'f1', action: 'ACCEPT' }],
+        },
+      },
+    ])
+    const context = makeContext()
+
+    await runReview({
+      reviewId: 'test-rev-6',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      mode: 'quick',
+      context,
+    })
+
+    expect(mockListCompleteReviewsForPr).toHaveBeenCalledWith(
+      'https://github.com/owner/repo/pull/1',
+      { excludeId: 'test-rev-6', limit: 3 }
+    )
+    const userContents = (mockModel.chat as jest.Mock).mock.calls.map(
+      call => call[0][0].content as string
+    )
+    expect(
+      userContents.some(c => c.includes('Token not cleared on reject'))
+    ).toBe(true)
+    expect(userContents.some(c => c.includes('"action": "ACCEPT"'))).toBe(true)
+    expect(userContents.some(c => c.includes('should not appear'))).toBe(false)
+  })
+
+  it('continues the review when prior-round load fails', async () => {
+    mockListCompleteReviewsForPr.mockRejectedValue(new Error('DB down'))
+    const context = makeContext()
+    await expect(
+      runReview({
+        reviewId: 'test-rev-7',
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        mode: 'quick',
+        context,
       })
     ).resolves.toBeDefined()
   })

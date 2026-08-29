@@ -103,6 +103,54 @@ describe('EnrichedContextSchema', () => {
         .success
     ).toBe(false)
   })
+
+  it('parses priorRounds from an earlier review of the same PR', () => {
+    const parsed = EnrichedContextSchema.safeParse({
+      ...valid,
+      priorRounds: [
+        {
+          reviewId: 'rev-old',
+          reviewedAt: '2026-08-16T00:00:00Z',
+          summary: 'Auth leak',
+          findings: [
+            {
+              severity: 'BLOCKING',
+              category: 'SECURITY',
+              file: 'src/auth.ts',
+              line: 42,
+              title: 'Token not cleared',
+              action: 'ACCEPT',
+            },
+          ],
+        },
+      ],
+    })
+    expect(parsed.success).toBe(true)
+  })
+
+  it('rejects priorRounds with an invalid finding action', () => {
+    expect(
+      EnrichedContextSchema.safeParse({
+        ...valid,
+        priorRounds: [
+          {
+            reviewId: 'rev-old',
+            reviewedAt: '2026-08-16T00:00:00Z',
+            summary: 'x',
+            findings: [
+              {
+                severity: 'BLOCKING',
+                category: 'SECURITY',
+                file: 'src/auth.ts',
+                title: 'x',
+                action: 'IGNORE',
+              },
+            ],
+          },
+        ],
+      }).success
+    ).toBe(false)
+  })
 })
 
 // ── DomainResult ──────────────────────────────────────────────────────────────

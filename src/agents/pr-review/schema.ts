@@ -32,6 +32,33 @@ export const FileCoverageSchema = z.object({
 })
 export type FileCoverage = z.infer<typeof FileCoverageSchema>
 
+// ── PriorRound ────────────────────────────────────────────────────────────────
+// Compact findings from an earlier COMPLETE review of the same PR.
+
+export const PriorFindingSchema = z.object({
+  severity: z.enum(['BLOCKING', 'SUGGESTION', 'NIT']),
+  category: z.enum([
+    'STYLE',
+    'CONVENTIONS',
+    'CORRECTNESS',
+    'SECURITY',
+    'PERFORMANCE',
+  ]),
+  file: z.string(),
+  line: z.number().int().positive().optional(),
+  title: z.string(),
+  action: z.enum(['ACCEPT', 'REJECT', 'EDIT']).optional(),
+})
+export type PriorFinding = z.infer<typeof PriorFindingSchema>
+
+export const PriorRoundSchema = z.object({
+  reviewId: z.string(),
+  reviewedAt: z.string(),
+  summary: z.string(),
+  findings: z.array(PriorFindingSchema),
+})
+export type PriorRound = z.infer<typeof PriorRoundSchema>
+
 // ── AlignmentItem ─────────────────────────────────────────────────────────────
 
 export const AlignmentItemSchema = z.object({
@@ -57,6 +84,8 @@ export const EnrichedContextSchema = z.object({
   ticketAcceptanceCriteria: z.array(z.string()).optional(),
   pastReviewSummaries: z.array(z.string()).optional(),
   memories: z.array(z.string()).optional(),
+  /** Earlier COMPLETE reviews of this same PR, oldest first. Injected by the coordinator. */
+  priorRounds: z.array(PriorRoundSchema).optional(),
   externalContextCalls: z.number().int().nonnegative(),
 })
 export type EnrichedContext = z.infer<typeof EnrichedContextSchema>
