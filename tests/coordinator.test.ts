@@ -403,6 +403,64 @@ describe('runReview (coordinator)', () => {
     })
   })
 
+  it('overwrites a githubConversation pack invented by the context agent', async () => {
+    mockRunContextAgent.mockResolvedValue({
+      context: {
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        prTitle: 'Feature',
+        prAuthor: 'alice',
+        prBranch: 'feat',
+        diff: 'diff --git a/foo.ts b/foo.ts',
+        filesChanged: ['foo.ts'],
+        fileCoverage: [{ file: 'foo.ts', status: 'READ' }],
+        githubConversation: {
+          items: [
+            {
+              kind: GithubCommentKind.DISCUSSION,
+              id: 999,
+              createdAt: '2026-01-01T00:00:00Z',
+              body: 'model-invented pack must not win',
+            },
+          ],
+          omitted: false,
+        },
+        externalContextCalls: 2,
+      },
+      tokensUsed: 10,
+      cost: 0,
+    })
+    mockFetchPrConversation.mockResolvedValue({
+      items: [
+        {
+          kind: GithubCommentKind.DISCUSSION,
+          source: GithubCommentSource.HUMAN,
+          id: 7,
+          author: 'bob',
+          createdAt: '2026-08-01T00:00:00Z',
+          body: 'Please keep the public API stable',
+        },
+      ],
+    })
+    const context = makeContext(stubOctokit())
+
+    await runReview({
+      reviewId: 'test-rev-13',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      mode: 'full',
+      context,
+    })
+
+    const userContents = (mockModel.chat as jest.Mock).mock.calls.map(
+      call => call[0][0].content as string
+    )
+    expect(
+      userContents.some(c => c.includes('Please keep the public API stable'))
+    ).toBe(true)
+    expect(
+      userContents.some(c => c.includes('model-invented pack must not win'))
+    ).toBe(false)
+  })
+
   it('continues CONTEXT when GitHub conversation fetch throws', async () => {
     mockFullContextAgent()
     mockFetchPrConversation.mockRejectedValue(new Error('API down'))

@@ -76,6 +76,7 @@ function formatTool(tool: string, args: Record<string, unknown>): string {
         Number(args.findingCount ?? 0)
       )
     case 'github_conversation':
+      // args.failed is set when the GitHub conversation fetch failed entirely
       if (args.failed) return formatGithubConversationFetchFailed()
       return formatGithubConversationActivityLabel(
         Number(args.itemCount ?? 0),
