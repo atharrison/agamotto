@@ -6,7 +6,17 @@
  * propagate to all agents automatically.
  */
 import { randomUUID } from 'crypto'
-import { DomainResultSchema, type DomainResult } from './schema'
+import {
+  DomainResultSchema,
+  type DomainResult,
+  type EnrichedContext,
+} from './schema'
+import { formatContextJsonForAgents } from '../../lib/github-conversation'
+
+/** Shared EnrichedContext serialization for domain-agent user prompts. */
+export function domainContextJson(enrichedContext: EnrichedContext): string {
+  return formatContextJsonForAgents(enrichedContext)
+}
 
 /**
  * Parse and validate a raw LLM text response into a typed DomainResult.

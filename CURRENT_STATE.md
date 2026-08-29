@@ -2,6 +2,46 @@
 
 ---
 
+# Session State — 2026-08-28 23:38
+
+## Context
+
+ATH-18 merged as [PR #8](https://github.com/atharrison/agamotto/pull/8) (`ce8ea1d` on `main`). Re-review injects this-PR prior findings. Two Agamotto passes; round 1 prompt/activity copy landed; round 2 REQUEST_CHANGES was ATH-39 FPs.
+
+## Decisions Made
+
+- **This-PR history is coordinator-injected**, not `search_past_reviews`. Query is COMPLETE **and** `neq(id, excludeId)`. Coordinator always overwrites `priorRounds` (system source of truth).
+- **Prompt omits `priorRounds` from LLM JSON**; payload in `<prior_rounds>` as data-only. Activity feed prefers SSE `data.label` (`formatPriorRoundsActivity`).
+- **Do not raise the 32 KB patch cap as the ATH-39 fix**: PR #8 largest file patch was 7.1 KB; whole PR ~47 KB. Domain agents only see `EnrichedContext`. Comment on ATH-39 has the implementation order.
+
+## Tickets Touched
+
+- **ATH-18**: Done ✅ — PR #8. Replies: `#issuecomment-5460278834` (round 1 take), `#issuecomment-5460346139` (round 2 decline).
+- **ATH-39**: Comment — 32 KB cap was not involved; don’t bump as the fix.
+- **ATH-44**: Created this session (stale GitHub OAuth 403 on comment post). Backlog. ATH-42 is the UI banner.
+
+## What Was Tried and Abandoned
+
+- Raising `FILE_CONTENT_MAX_BYTES` for round 2: rejected — cap never fired.
+
+## Open Questions / Blockers
+
+- ATH-44: logout/login refreshes `gh_provider_token`; fix belongs in `src/lib/github-auth.ts`, not Octokit tools.
+
+## Next Steps
+
+1. ATH-19 (`/history`).
+2. ATH-39 / ATH-35 (review quality); ATH-42 then ATH-44.
+3. ATH-32. Backlog: ATH-41, ATH-37.
+
+## Key Files
+
+- `src/lib/prior-rounds.ts`, `src/memory/review-store.ts` (`listCompleteReviewsForPr`)
+- `src/agents/pr-review/coordinator.ts`, `context-agent.ts`, `prompts.ts`
+- `app/review/[id]/ReviewShell.tsx` (`data.label`)
+
+---
+
 # Session State — 2026-08-27 23:59
 
 ## Context

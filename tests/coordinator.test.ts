@@ -1,3 +1,4 @@
+import type { Octokit } from '@octokit/rest'
 import { runReview } from '../src/agents/pr-review/coordinator'
 import type { ReviewContext } from '../src/harness/context'
 import type { ModelClient, ModelReply } from '../src/harness/models'
@@ -5,15 +6,37 @@ import { InMemoryCheckpointStore } from '../src/harness/checkpoints'
 import type { ToolRegistry } from '../src/harness/tools'
 import { dispatch } from '../src/harness/tools'
 import { listCompleteReviewsForPr } from '../src/memory/review-store'
+import { fetchPrConversation } from '../src/tools/github'
+import { runContextAgent } from '../src/agents/pr-review/context-agent'
+import {
+  GithubCommentKind,
+  GithubCommentSource,
+} from '../src/lib/github-conversation'
 
 jest.mock('../src/memory/review-store', () => ({
   listCompleteReviewsForPr: jest.fn().mockResolvedValue([]),
+}))
+
+jest.mock('../src/tools/github', () => ({
+  fetchPrConversation: jest.fn().mockResolvedValue({ items: [] }),
+}))
+
+jest.mock('../src/agents/pr-review/context-agent', () => ({
+  runContextAgent: jest.fn(),
 }))
 
 const mockListCompleteReviewsForPr =
   listCompleteReviewsForPr as jest.MockedFunction<
     typeof listCompleteReviewsForPr
   >
+
+const mockFetchPrConversation = fetchPrConversation as jest.MockedFunction<
+  typeof fetchPrConversation
+>
+
+const mockRunContextAgent = runContextAgent as jest.MockedFunction<
+  typeof runContextAgent
+>
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -59,6 +82,9 @@ describe('runReview (coordinator)', () => {
     callCount = 0
     mockListCompleteReviewsForPr.mockReset()
     mockListCompleteReviewsForPr.mockResolvedValue([])
+    mockFetchPrConversation.mockReset()
+    mockFetchPrConversation.mockResolvedValue({ items: [] })
+    mockRunContextAgent.mockReset()
     mockModel = {
       chat: jest.fn(async (_messages, _tools, _systemPrompt) => {
         callCount++
@@ -76,7 +102,7 @@ describe('runReview (coordinator)', () => {
     }
   })
 
-  function makeContext(): ReviewContext {
+  function makeContext(octokit: Octokit | null = null): ReviewContext {
     const checkpoints = new InMemoryCheckpointStore()
     const registry: ToolRegistry = {}
     return {
@@ -93,7 +119,12 @@ describe('runReview (coordinator)', () => {
       },
       registry,
       dispatcher: _reviewId => call => dispatch(call, registry, _reviewId),
+      octokit,
     }
+  }
+
+  function stubOctokit(): Octokit {
+    return {} as Octokit
   }
 
   it('runs the full pipeline and returns a PRReview in quick mode', async () => {
@@ -121,6 +152,17 @@ describe('runReview (coordinator)', () => {
         label: 'No prior review rounds',
       },
     })
+    expect(mockFetchPrConversation).not.toHaveBeenCalled()
+    const userContents = (mockModel.chat as jest.Mock).mock.calls.map(
+      call => call[0][0].content as string
+    )
+    expect(userContents.some(c => c.includes('<github_conversation>'))).toBe(
+      true
+    )
+    expect(userContents.some(c => c.includes('"omitted": false'))).toBe(true)
+    expect(userContents.every(c => !c.includes('"githubConversation"'))).toBe(
+      true
+    )
   })
 
   it('emits the SSE done event at the end', async () => {
@@ -297,5 +339,232 @@ describe('runReview (coordinator)', () => {
         context,
       })
     ).resolves.toBeDefined()
+  })
+
+  function mockFullContextAgent() {
+    mockRunContextAgent.mockResolvedValue({
+      context: {
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        prTitle: 'Feature',
+        prAuthor: 'alice',
+        prBranch: 'feat',
+        diff: 'diff --git a/foo.ts b/foo.ts',
+        filesChanged: ['foo.ts'],
+        fileCoverage: [{ file: 'foo.ts', status: 'READ' }],
+        externalContextCalls: 2,
+      },
+      tokensUsed: 10,
+      cost: 0,
+    })
+  }
+
+  it('overwrites githubConversation in full mode even when context JSON omits it', async () => {
+    mockFullContextAgent()
+    mockFetchPrConversation.mockResolvedValue({
+      items: [
+        {
+          kind: GithubCommentKind.DISCUSSION,
+          source: GithubCommentSource.HUMAN,
+          id: 7,
+          author: 'bob',
+          createdAt: '2026-08-01T00:00:00Z',
+          body: 'Please keep the public API stable',
+        },
+      ],
+    })
+    const context = makeContext(stubOctokit())
+    const emit = jest.fn()
+
+    await runReview({
+      reviewId: 'test-rev-8',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      mode: 'full',
+      context,
+      emit,
+    })
+
+    expect(mockFetchPrConversation).toHaveBeenCalledTimes(1)
+    const userContents = (mockModel.chat as jest.Mock).mock.calls.map(
+      call => call[0][0].content as string
+    )
+    expect(
+      userContents.some(c => c.includes('Please keep the public API stable'))
+    ).toBe(true)
+    expect(userContents.some(c => c.includes('<github_conversation>'))).toBe(
+      true
+    )
+    expect(userContents.some(c => c.includes('"kind": "DISCUSSION"'))).toBe(
+      true
+    )
+    expect(emit).toHaveBeenCalledWith('progress', {
+      tool: 'github_conversation',
+      args: { itemCount: 1, omitted: false, failed: false },
+      label: 'Loaded 1 GitHub comment',
+    })
+  })
+
+  it('overwrites a githubConversation pack invented by the context agent', async () => {
+    mockRunContextAgent.mockResolvedValue({
+      context: {
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        prTitle: 'Feature',
+        prAuthor: 'alice',
+        prBranch: 'feat',
+        diff: 'diff --git a/foo.ts b/foo.ts',
+        filesChanged: ['foo.ts'],
+        fileCoverage: [{ file: 'foo.ts', status: 'READ' }],
+        githubConversation: {
+          items: [
+            {
+              kind: GithubCommentKind.DISCUSSION,
+              id: 999,
+              createdAt: '2026-01-01T00:00:00Z',
+              body: 'model-invented pack must not win',
+            },
+          ],
+          omitted: false,
+        },
+        externalContextCalls: 2,
+      },
+      tokensUsed: 10,
+      cost: 0,
+    })
+    mockFetchPrConversation.mockResolvedValue({
+      items: [
+        {
+          kind: GithubCommentKind.DISCUSSION,
+          source: GithubCommentSource.HUMAN,
+          id: 7,
+          author: 'bob',
+          createdAt: '2026-08-01T00:00:00Z',
+          body: 'Please keep the public API stable',
+        },
+      ],
+    })
+    const context = makeContext(stubOctokit())
+
+    await runReview({
+      reviewId: 'test-rev-13',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      mode: 'full',
+      context,
+    })
+
+    const userContents = (mockModel.chat as jest.Mock).mock.calls.map(
+      call => call[0][0].content as string
+    )
+    expect(
+      userContents.some(c => c.includes('Please keep the public API stable'))
+    ).toBe(true)
+    expect(
+      userContents.some(c => c.includes('model-invented pack must not win'))
+    ).toBe(false)
+  })
+
+  it('continues CONTEXT when GitHub conversation fetch throws', async () => {
+    mockFullContextAgent()
+    mockFetchPrConversation.mockRejectedValue(new Error('API down'))
+    const context = makeContext(stubOctokit())
+    const emit = jest.fn()
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const review = await runReview({
+      reviewId: 'test-rev-9',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      mode: 'full',
+      context,
+      emit,
+    })
+
+    warnSpy.mockRestore()
+    expect(review.reviewId).toBe('test-rev-9')
+    expect(emit).toHaveBeenCalledWith('progress', {
+      tool: 'github_conversation',
+      args: { itemCount: 0, omitted: false, failed: true },
+      label: 'GitHub conversation unavailable',
+    })
+    const userContents = (mockModel.chat as jest.Mock).mock.calls.map(
+      call => call[0][0].content as string
+    )
+    expect(userContents.some(c => c.includes('<github_conversation>'))).toBe(
+      true
+    )
+    expect(userContents.every(c => !c.includes('"githubConversation"'))).toBe(
+      true
+    )
+  })
+
+  it('treats fetch error field as a miss without failing CONTEXT', async () => {
+    mockFullContextAgent()
+    mockFetchPrConversation.mockResolvedValue({
+      items: [],
+      error: 'rate limited',
+    })
+    const context = makeContext(stubOctokit())
+    const emit = jest.fn()
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await runReview({
+      reviewId: 'test-rev-10',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      mode: 'full',
+      context,
+      emit,
+    })
+
+    warnSpy.mockRestore()
+    expect(emit).toHaveBeenCalledWith(
+      'progress',
+      expect.objectContaining({
+        tool: 'github_conversation',
+        label: 'GitHub conversation unavailable',
+      })
+    )
+  })
+
+  it('does not fetch when the PR URL cannot be parsed', async () => {
+    mockFullContextAgent()
+    const context = makeContext(stubOctokit())
+    const emit = jest.fn()
+
+    await runReview({
+      reviewId: 'test-rev-11',
+      prUrl: 'https://example.com/not-a-pr',
+      mode: 'full',
+      context,
+      emit,
+    })
+
+    expect(mockFetchPrConversation).not.toHaveBeenCalled()
+    expect(emit).toHaveBeenCalledWith(
+      'progress',
+      expect.objectContaining({
+        tool: 'github_conversation',
+        label: 'GitHub conversation unavailable',
+      })
+    )
+  })
+
+  it('skips GitHub conversation fetch when octokit is null', async () => {
+    mockFullContextAgent()
+    const context = makeContext(null)
+    const emit = jest.fn()
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await runReview({
+      reviewId: 'test-rev-12',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      mode: 'full',
+      context,
+      emit,
+    })
+
+    warnSpy.mockRestore()
+    expect(mockFetchPrConversation).not.toHaveBeenCalled()
+    expect(emit).toHaveBeenCalledWith('progress', {
+      tool: 'github_conversation',
+      args: { itemCount: 0, omitted: false, failed: true },
+      label: 'GitHub conversation unavailable',
+    })
   })
 })

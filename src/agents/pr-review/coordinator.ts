@@ -11,6 +11,8 @@ import { mergeResults, bucketFindings } from './merge'
 import { coordinatorSummaryPrompt } from './prompts'
 import { withSpan } from '../../harness/observability'
 import { listCompleteReviewsForPr } from '../../memory/review-store'
+import { fetchPrConversation } from '../../tools/github'
+import { parsePrUrl } from '../../lib/queue'
 import {
   MAX_PRIOR_ROUNDS,
   formatPriorRounds,
@@ -18,6 +20,16 @@ import {
   formatPriorRoundsActivity,
   type PriorRound,
 } from '../../lib/prior-rounds'
+import {
+  EMPTY_GITHUB_CONVERSATION,
+  formatContextJsonForAgents,
+  formatGithubConversation,
+  formatGithubConversationActivity,
+  formatGithubConversationFetchFailed,
+  githubConversationStats,
+  type GithubConversationPack,
+} from '../../lib/github-conversation'
+import type { Octokit } from '@octokit/rest'
 
 // ── Public interface ──────────────────────────────────────────────────────────
 
@@ -143,9 +155,15 @@ async function _runReview(
       pastReviewSummaries: [],
       memories: [],
       priorRounds,
+      githubConversation: EMPTY_GITHUB_CONVERSATION,
       externalContextCalls: 0,
     }
   } else {
+    const githubConversationPromise = loadGithubConversation(
+      context.octokit,
+      prUrl,
+      reviewId
+    )
     const ctxResult = await withSpan(
       'harness.review.context',
       { 'review.id': reviewId },
@@ -182,7 +200,32 @@ async function _runReview(
         return r
       }
     )
-    enrichedContext = { ...ctxResult.context, priorRounds }
+    const { pack: githubConversation, failed: githubFailed } =
+      await githubConversationPromise
+    const { itemCount, omitted } = githubConversationStats(githubConversation)
+    const githubLabel = githubFailed
+      ? formatGithubConversationFetchFailed()
+      : formatGithubConversationActivity(githubConversation)
+    console.log(
+      JSON.stringify({
+        github_conversation_loaded: {
+          reviewId,
+          itemCount,
+          omitted,
+          failed: githubFailed,
+        },
+      })
+    )
+    emit('progress', {
+      tool: 'github_conversation',
+      args: { itemCount, omitted, failed: githubFailed },
+      label: githubLabel,
+    })
+    enrichedContext = {
+      ...ctxResult.context,
+      priorRounds,
+      githubConversation,
+    }
     totalTokens += ctxResult.tokensUsed
     totalCost += ctxResult.cost
     emit('checkpoint', { stage: 'CONTEXT', status: 'PASS', reviewId })
@@ -303,7 +346,7 @@ async function _runReview(
           {
             role: 'user',
             content: coordinatorSummaryPrompt(
-              JSON.stringify(enrichedContext, null, 2),
+              formatContextJsonForAgents(enrichedContext),
               JSON.stringify(mergedFindings, null, 2)
             ),
           },
@@ -484,5 +527,43 @@ async function loadPriorRounds(
   } catch (err) {
     console.warn(`[coordinator][${reviewId}] prior rounds load failed:`, err)
     return []
+  }
+}
+
+/**
+ * Load compacted GitHub conversation for this PR. Empty on missing token,
+ * unparseable URL, or API failure — never fail the pipeline.
+ */
+async function loadGithubConversation(
+  octokit: Octokit | null,
+  prUrl: string,
+  reviewId: string
+): Promise<{ pack: GithubConversationPack; failed: boolean }> {
+  if (!octokit) {
+    console.warn(
+      `[coordinator][${reviewId}] GitHub conversation skipped: no GitHub token`
+    )
+    return { pack: EMPTY_GITHUB_CONVERSATION, failed: true }
+  }
+  try {
+    const parsed = parsePrUrl(prUrl)
+    if (!parsed) {
+      return { pack: EMPTY_GITHUB_CONVERSATION, failed: true }
+    }
+    const result = await fetchPrConversation(octokit, parsed)
+    if (result.error) {
+      console.warn(
+        `[coordinator][${reviewId}] GitHub conversation load failed:`,
+        result.error
+      )
+      return { pack: EMPTY_GITHUB_CONVERSATION, failed: true }
+    }
+    return { pack: formatGithubConversation(result.items), failed: false }
+  } catch (err) {
+    console.warn(
+      `[coordinator][${reviewId}] GitHub conversation load failed:`,
+      err
+    )
+    return { pack: EMPTY_GITHUB_CONVERSATION, failed: true }
   }
 }

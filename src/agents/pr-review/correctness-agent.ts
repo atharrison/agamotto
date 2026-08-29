@@ -1,7 +1,7 @@
 import type { ModelClient } from '../../harness/models'
 import type { DomainResult, EnrichedContext } from './schema'
 import { CORRECTNESS_SYSTEM, correctnessUserPrompt } from './prompts'
-import { parseDomainResult } from './domain-agent-utils'
+import { parseDomainResult, domainContextJson } from './domain-agent-utils'
 
 export interface DomainAgentOptions {
   enrichedContext: EnrichedContext
@@ -18,7 +18,7 @@ export async function runCorrectnessAgent(
   const { enrichedContext, model } = options
   const start = Date.now()
 
-  const contextJson = JSON.stringify(enrichedContext, null, 2)
+  const contextJson = domainContextJson(enrichedContext)
   const userPrompt = correctnessUserPrompt(contextJson)
 
   const reply = await model.chat(

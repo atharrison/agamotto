@@ -61,16 +61,27 @@ describe('createReviewContext', () => {
   })
 
   it('assembles all deps with overrides', () => {
-    const ctx = createReviewContext({
-      model: createModelClient({ provider: 'anthropic', apiKey: 'test-key' }),
-      memory,
-      checkpoints: new InMemoryCheckpointStore(),
-    })
+    const saved = process.env.GITHUB_TOKEN
+    delete process.env.GITHUB_TOKEN
+    try {
+      const ctx = createReviewContext({
+        model: createModelClient({ provider: 'anthropic', apiKey: 'test-key' }),
+        memory,
+        checkpoints: new InMemoryCheckpointStore(),
+      })
 
-    expect(ctx.deps.memory).toBe(memory)
-    expect(ctx.deps.checkpoints).toBeInstanceOf(InMemoryCheckpointStore)
-    expect(ctx.registry).toBeDefined()
-    expect(typeof ctx.dispatcher).toBe('function')
+      expect(ctx.deps.memory).toBe(memory)
+      expect(ctx.deps.checkpoints).toBeInstanceOf(InMemoryCheckpointStore)
+      expect(ctx.registry).toBeDefined()
+      expect(typeof ctx.dispatcher).toBe('function')
+      expect(ctx.octokit).toBeNull()
+    } finally {
+      if (saved === undefined) {
+        delete process.env.GITHUB_TOKEN
+      } else {
+        process.env.GITHUB_TOKEN = saved
+      }
+    }
   })
 
   it('dispatcher returns a ToolDispatcher bound to the registry', async () => {

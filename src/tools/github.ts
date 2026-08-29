@@ -1,6 +1,12 @@
 import { Octokit } from '@octokit/rest'
 import { z } from 'zod'
 import type { ToolEntry } from '../harness/tools'
+import type { ParsedPrUrl } from '../lib/queue'
+import {
+  GithubCommentKind,
+  classifyGithubCommentSource,
+  type RawGithubComment,
+} from '../lib/github-conversation'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -62,19 +68,18 @@ export function createGithubTools(
         'Fetch existing review comments on a pull request. Useful for context on prior feedback.',
       schema: FetchPrCommentsSchema,
       fn: async ({ owner, repo, pull_number }) => {
-        const { data } = await octokit.pulls.listReviewComments({
+        const comments = await listInlineReviewComments(octokit, {
           owner,
           repo,
           pull_number,
-          per_page: 100, // MVP: no pagination; sufficient for demo target
         })
-        return data.map(c => ({
+        return comments.map(c => ({
           id: c.id,
           path: c.path,
           line: c.line,
           body: c.body,
-          author: c.user?.login,
-          createdAt: c.created_at,
+          author: c.author,
+          createdAt: c.createdAt,
         }))
       },
     },
@@ -143,7 +148,118 @@ export function createGithubTools(
  * Returns null if no token is available; callers degrade gracefully (no GitHub tools).
  */
 export function createOctokit(token?: string | null): Octokit | null {
-  const auth = token ?? process.env.GITHUB_TOKEN
+  const auth = (token ?? process.env.GITHUB_TOKEN)?.trim()
   if (!auth) return null
   return new Octokit({ auth })
+}
+
+// ── Coordinator conversation fetch ────────────────────────────────────────────
+
+const FIRST_PAGE = 100
+
+type GithubUserLike = { login?: string | null; type?: string | null } | null
+
+function authorLogin(user: GithubUserLike): string | undefined {
+  return user?.login ?? undefined
+}
+
+function mapInlineComment(c: {
+  id: number
+  path?: string | null
+  line?: number | null
+  body?: string | null
+  created_at: string
+  user?: GithubUserLike
+}): RawGithubComment {
+  const body = c.body ?? ''
+  const item: RawGithubComment = {
+    kind: GithubCommentKind.INLINE,
+    source: classifyGithubCommentSource(c.user, body),
+    id: c.id,
+    createdAt: c.created_at,
+    body,
+  }
+  const author = authorLogin(c.user)
+  if (author) item.author = author
+  if (c.path) item.path = c.path
+  if (typeof c.line === 'number') item.line = c.line
+  return item
+}
+
+async function listInlineReviewComments(
+  octokit: Octokit,
+  args: { owner: string; repo: string; pull_number: number }
+): Promise<RawGithubComment[]> {
+  const { data } = await octokit.pulls.listReviewComments({
+    ...args,
+    per_page: FIRST_PAGE,
+  })
+  return data.map(mapInlineComment)
+}
+
+/**
+ * Load inline review comments, issue discussion, and non-empty review-summary
+ * bodies for a PR (first page each). Never throws — missing token or API
+ * errors return empty items so the review can continue.
+ */
+export async function fetchPrConversation(
+  octokit: Octokit | null,
+  parsed: ParsedPrUrl
+): Promise<{ items: RawGithubComment[]; error?: string }> {
+  if (!octokit) return { items: [] }
+  const { owner, repo, pr_number: pull_number } = parsed
+  try {
+    const [inline, discussion, reviews] = await Promise.all([
+      listInlineReviewComments(octokit, { owner, repo, pull_number }),
+      octokit.issues
+        .listComments({
+          owner,
+          repo,
+          issue_number: pull_number,
+          per_page: FIRST_PAGE,
+        })
+        .then(({ data }) =>
+          data.map((c): RawGithubComment => {
+            const body = c.body ?? ''
+            const item: RawGithubComment = {
+              kind: GithubCommentKind.DISCUSSION,
+              source: classifyGithubCommentSource(c.user, body),
+              id: c.id,
+              createdAt: c.created_at,
+              body,
+            }
+            const author = authorLogin(c.user)
+            if (author) item.author = author
+            return item
+          })
+        ),
+      octokit.pulls
+        .listReviews({
+          owner,
+          repo,
+          pull_number,
+          per_page: FIRST_PAGE,
+        })
+        .then(({ data }) =>
+          data.flatMap((r): RawGithubComment[] => {
+            const body = (r.body ?? '').trim()
+            if (!body) return []
+            const item: RawGithubComment = {
+              kind: GithubCommentKind.REVIEW_BODY,
+              source: classifyGithubCommentSource(r.user, body),
+              id: r.id,
+              createdAt: r.submitted_at ?? new Date(0).toISOString(),
+              body,
+            }
+            const author = authorLogin(r.user)
+            if (author) item.author = author
+            return [item]
+          })
+        ),
+    ])
+    return { items: [...inline, ...discussion, ...reviews] }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return { items: [], error: message }
+  }
 }

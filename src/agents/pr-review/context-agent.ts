@@ -156,6 +156,7 @@ function tryParseEnrichedContext(
     pastReviewSummaries: [],
     memories: [],
     priorRounds: [],
+    githubConversation: { items: [], omitted: false },
     externalContextCalls: 0,
   }
 }
