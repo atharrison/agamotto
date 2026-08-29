@@ -150,3 +150,14 @@ export function formatPriorRounds(rows: CompleteReviewSource[]): PriorRound[] {
   }
   return rounds
 }
+
+/** Counts for logs, SSE, and the completion stats payload. */
+export function priorRoundStats(rounds: PriorRound[]): {
+  roundCount: number
+  findingCount: number
+} {
+  return {
+    roundCount: rounds.length,
+    findingCount: rounds.reduce((n, r) => n + r.findings.length, 0),
+  }
+}

@@ -205,13 +205,21 @@ describe('runReview (coordinator)', () => {
       },
     ])
     const context = makeContext()
+    const emit = jest.fn()
+    const logs: string[] = []
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(msg => {
+      logs.push(String(msg))
+    })
 
     await runReview({
       reviewId: 'test-rev-6',
       prUrl: 'https://github.com/owner/repo/pull/1',
       mode: 'quick',
       context,
+      emit,
     })
+
+    logSpy.mockRestore()
 
     expect(mockListCompleteReviewsForPr).toHaveBeenCalledWith(
       'https://github.com/owner/repo/pull/1',
@@ -225,6 +233,48 @@ describe('runReview (coordinator)', () => {
     ).toBe(true)
     expect(userContents.some(c => c.includes('"action": "ACCEPT"'))).toBe(true)
     expect(userContents.some(c => c.includes('should not appear'))).toBe(false)
+    expect(emit).toHaveBeenCalledWith('progress', {
+      tool: 'prior_rounds',
+      args: { roundCount: 1, findingCount: 1 },
+    })
+    const loaded = logs
+      .map(l => {
+        try {
+          return JSON.parse(l) as {
+            prior_rounds_loaded?: {
+              roundCount: number
+              findingCount: number
+              titles: string[]
+            }
+          }
+        } catch {
+          return {}
+        }
+      })
+      .find(o => o.prior_rounds_loaded)
+    expect(loaded?.prior_rounds_loaded).toMatchObject({
+      roundCount: 1,
+      findingCount: 1,
+      titles: ['Token not cleared on reject'],
+    })
+    expect(
+      logs.some(l => {
+        try {
+          const parsed = JSON.parse(l) as {
+            harness_run_complete?: {
+              priorRounds: number
+              priorFindings: number
+            }
+          }
+          return (
+            parsed.harness_run_complete?.priorRounds === 1 &&
+            parsed.harness_run_complete?.priorFindings === 1
+          )
+        } catch {
+          return false
+        }
+      })
+    ).toBe(true)
   })
 
   it('continues the review when prior-round load fails', async () => {

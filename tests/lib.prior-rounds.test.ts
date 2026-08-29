@@ -2,6 +2,7 @@ import {
   MAX_PRIOR_ROUNDS,
   PriorFindingAction,
   formatPriorRounds,
+  priorRoundStats,
   type CompleteReviewSource,
 } from '../src/lib/prior-rounds'
 
@@ -188,5 +189,47 @@ describe('formatPriorRounds', () => {
     ])
     expect(rounds[0].summary).toBe('')
     expect(rounds[0].findings).toEqual([])
+  })
+})
+
+describe('priorRoundStats', () => {
+  it('counts rounds and findings', () => {
+    expect(priorRoundStats([])).toEqual({ roundCount: 0, findingCount: 0 })
+    expect(
+      priorRoundStats([
+        {
+          reviewId: 'a',
+          reviewedAt: '2026-08-16T00:00:00Z',
+          summary: 'one',
+          findings: [
+            {
+              severity: 'BLOCKING',
+              category: 'SECURITY',
+              file: 'a.ts',
+              title: 'one',
+            },
+          ],
+        },
+        {
+          reviewId: 'b',
+          reviewedAt: '2026-08-17T00:00:00Z',
+          summary: 'two',
+          findings: [
+            {
+              severity: 'NIT',
+              category: 'STYLE',
+              file: 'b.ts',
+              title: 'two',
+            },
+            {
+              severity: 'NIT',
+              category: 'STYLE',
+              file: 'c.ts',
+              title: 'three',
+            },
+          ],
+        },
+      ])
+    ).toEqual({ roundCount: 2, findingCount: 3 })
   })
 })

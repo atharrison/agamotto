@@ -14,6 +14,7 @@ import { listCompleteReviewsForPr } from '../../memory/review-store'
 import {
   MAX_PRIOR_ROUNDS,
   formatPriorRounds,
+  priorRoundStats,
   type PriorRound,
 } from '../../lib/prior-rounds'
 
@@ -79,6 +80,23 @@ async function _runReview(
   const phaseDurations: Record<string, number> = {}
 
   const priorRounds = await loadPriorRounds(prUrl, reviewId)
+  const { roundCount, findingCount: priorFindingCount } =
+    priorRoundStats(priorRounds)
+  console.log(
+    JSON.stringify({
+      prior_rounds_loaded: {
+        reviewId,
+        prUrl,
+        roundCount,
+        findingCount: priorFindingCount,
+        titles: priorRounds.flatMap(r => r.findings.map(f => f.title)),
+      },
+    })
+  )
+  emit('progress', {
+    tool: 'prior_rounds',
+    args: { roundCount, findingCount: priorFindingCount },
+  })
 
   // ── INPUT checkpoint ──────────────────────────────────────────────────────
   const inputStart = Date.now()
@@ -349,6 +367,8 @@ async function _runReview(
     'tokens.total': totalTokens,
     'cost.usd': estimatedCostUsd,
     'findings.count': findingsCount,
+    'prior.rounds': roundCount,
+    'prior.findings': priorFindingCount,
     'duration.ms': durationMs,
     'review.verdict': review.verdict,
   })
@@ -359,6 +379,8 @@ async function _runReview(
     estimatedCostUsd,
     durationMs,
     findingsCount,
+    priorRounds: roundCount,
+    priorFindings: priorFindingCount,
     phaseDurations,
   })
 
@@ -375,6 +397,8 @@ async function _runReview(
         estimatedCostUsd,
         durationMs,
         findingsCount,
+        priorRounds: roundCount,
+        priorFindings: priorFindingCount,
         phaseDurations,
       },
     })

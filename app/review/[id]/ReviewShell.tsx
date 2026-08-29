@@ -65,6 +65,12 @@ function formatTool(tool: string, args: Record<string, unknown>): string {
       return `Fetching ticket ${args.ticketId ?? ''}…`
     case 'search_past_reviews':
       return `Searching history: ${args.file ?? ''}…`
+    case 'prior_rounds': {
+      const rounds = Number(args.roundCount ?? 0)
+      const findings = Number(args.findingCount ?? 0)
+      if (rounds === 0) return 'No prior rounds of this PR'
+      return `Loaded ${findings} prior finding${findings === 1 ? '' : 's'} from ${rounds} round${rounds === 1 ? '' : 's'} of this PR`
+    }
     default:
       return tool.replace(/_/g, ' ') + '…'
   }
