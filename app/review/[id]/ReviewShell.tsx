@@ -8,6 +8,10 @@ import {
 } from '../../../src/lib/stored-review-ui'
 import type { SiblingReviewNav } from '../../../src/lib/review-siblings'
 import { formatPriorRoundsActivity } from '../../../src/lib/prior-rounds'
+import {
+  formatGithubConversationActivityLabel,
+  formatGithubConversationFetchFailed,
+} from '../../../src/lib/github-conversation'
 
 interface Finding {
   id: string
@@ -70,6 +74,12 @@ function formatTool(tool: string, args: Record<string, unknown>): string {
       return formatPriorRoundsActivity(
         Number(args.roundCount ?? 0),
         Number(args.findingCount ?? 0)
+      )
+    case 'github_conversation':
+      if (args.failed) return formatGithubConversationFetchFailed()
+      return formatGithubConversationActivityLabel(
+        Number(args.itemCount ?? 0),
+        Boolean(args.omitted)
       )
     default:
       return tool.replace(/_/g, ' ') + '…'

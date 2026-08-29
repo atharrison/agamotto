@@ -59,6 +59,30 @@ export const PriorRoundSchema = z.object({
 })
 export type PriorRound = z.infer<typeof PriorRoundSchema>
 
+// ── GithubConversation ────────────────────────────────────────────────────────
+// Compacted GitHub comments for this PR. Injected by the coordinator.
+
+export const GithubConversationItemSchema = z.object({
+  kind: z.enum(['INLINE', 'DISCUSSION', 'REVIEW_BODY']),
+  id: z.number().int(),
+  author: z.string().optional(),
+  createdAt: z.string(),
+  body: z.string(),
+  path: z.string().optional(),
+  line: z.number().int().optional(),
+})
+export type GithubConversationItem = z.infer<
+  typeof GithubConversationItemSchema
+>
+
+export const GithubConversationPackSchema = z.object({
+  items: z.array(GithubConversationItemSchema),
+  omitted: z.boolean(),
+})
+export type GithubConversationPack = z.infer<
+  typeof GithubConversationPackSchema
+>
+
 // ── AlignmentItem ─────────────────────────────────────────────────────────────
 
 export const AlignmentItemSchema = z.object({
@@ -86,6 +110,11 @@ export const EnrichedContextSchema = z.object({
   memories: z.array(z.string()).optional(),
   /** Earlier COMPLETE reviews of this same PR, oldest first. Injected by the coordinator. */
   priorRounds: z.array(PriorRoundSchema).optional(),
+  /**
+   * Compacted GitHub conversation for this PR. Injected by the coordinator;
+   * the context agent must omit this field from its JSON.
+   */
+  githubConversation: GithubConversationPackSchema.optional(),
   externalContextCalls: z.number().int().nonnegative(),
 })
 export type EnrichedContext = z.infer<typeof EnrichedContextSchema>

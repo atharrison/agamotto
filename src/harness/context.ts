@@ -15,6 +15,7 @@ import { createMemoryStore, type MemoryStore } from '../memory/index'
 import { InMemoryCheckpointStore, type CheckpointStore } from './checkpoints'
 import { dispatch, type ToolRegistry } from './tools'
 import type { ToolDispatcher } from './loop'
+import type { Octokit } from '@octokit/rest'
 import { createGithubTools, createOctokit } from '../tools/github'
 import { createMemoryTools } from '../tools/memory'
 import { createTicketTools } from '../tools/tickets'
@@ -34,16 +35,20 @@ export interface ReviewContext {
   registry: ToolRegistry
   /** Partially-applied dispatch bound to this context's registry. */
   dispatcher: (reviewId: string) => ToolDispatcher
+  /** Shared Octokit for coordinator-injected GitHub fetches. Null when no token. */
+  octokit: Octokit | null
 }
 
 // ── buildRegistry — assemble all tools given a dep set ────────────────────────
 
 export function buildRegistry(
   deps: ReviewDeps,
-  githubToken?: string | null
+  githubToken?: string | null,
+  octokit?: Octokit | null
 ): ToolRegistry {
+  const client = octokit === undefined ? createOctokit(githubToken) : octokit
   return {
-    ...createGithubTools(createOctokit(githubToken)),
+    ...createGithubTools(client),
     ...createMemoryTools(deps.memory),
     ...createTicketTools(),
   }
@@ -61,12 +66,13 @@ export function createReviewContext(
     checkpoints: overrides?.checkpoints ?? new InMemoryCheckpointStore(),
   }
 
-  const registry = buildRegistry(deps, githubToken)
+  const octokit = createOctokit(githubToken)
+  const registry = buildRegistry(deps, githubToken, octokit)
 
   const dispatcher =
     (reviewId: string): ToolDispatcher =>
     call =>
       dispatch(call, registry, reviewId)
 
-  return { deps, registry, dispatcher }
+  return { deps, registry, dispatcher, octokit }
 }

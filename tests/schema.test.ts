@@ -151,6 +151,44 @@ describe('EnrichedContextSchema', () => {
       }).success
     ).toBe(false)
   })
+
+  it('parses a githubConversation pack', () => {
+    const parsed = EnrichedContextSchema.safeParse({
+      ...valid,
+      githubConversation: {
+        items: [
+          {
+            kind: 'REVIEW_BODY',
+            id: 3,
+            author: 'carol',
+            createdAt: '2026-08-02T00:00:00Z',
+            body: 'Please add tests',
+          },
+        ],
+        omitted: false,
+      },
+    })
+    expect(parsed.success).toBe(true)
+  })
+
+  it('rejects githubConversation with an unknown kind', () => {
+    expect(
+      EnrichedContextSchema.safeParse({
+        ...valid,
+        githubConversation: {
+          items: [
+            {
+              kind: 'THREAD',
+              id: 1,
+              createdAt: '2026-08-02T00:00:00Z',
+              body: 'x',
+            },
+          ],
+          omitted: false,
+        },
+      }).success
+    ).toBe(false)
+  })
 })
 
 // ── DomainResult ──────────────────────────────────────────────────────────────
