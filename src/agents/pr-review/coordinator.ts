@@ -22,6 +22,7 @@ import {
 } from '../../lib/prior-rounds'
 import {
   EMPTY_GITHUB_CONVERSATION,
+  formatContextJsonForAgents,
   formatGithubConversation,
   formatGithubConversationActivity,
   formatGithubConversationFetchFailed,
@@ -345,7 +346,7 @@ async function _runReview(
           {
             role: 'user',
             content: coordinatorSummaryPrompt(
-              JSON.stringify(enrichedContext, null, 2),
+              formatContextJsonForAgents(enrichedContext),
               JSON.stringify(mergedFindings, null, 2)
             ),
           },
@@ -538,6 +539,12 @@ async function loadGithubConversation(
   prUrl: string,
   reviewId: string
 ): Promise<{ pack: GithubConversationPack; failed: boolean }> {
+  if (!octokit) {
+    console.warn(
+      `[coordinator][${reviewId}] GitHub conversation skipped: no GitHub token`
+    )
+    return { pack: EMPTY_GITHUB_CONVERSATION, failed: true }
+  }
   try {
     const parsed = parsePrUrl(prUrl)
     if (!parsed) {

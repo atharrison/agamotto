@@ -148,7 +148,7 @@ export function createGithubTools(
  * Returns null if no token is available; callers degrade gracefully (no GitHub tools).
  */
 export function createOctokit(token?: string | null): Octokit | null {
-  const auth = token ?? process.env.GITHUB_TOKEN
+  const auth = (token ?? process.env.GITHUB_TOKEN)?.trim()
   if (!auth) return null
   return new Octokit({ auth })
 }

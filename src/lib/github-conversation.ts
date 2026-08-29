@@ -68,6 +68,13 @@ export interface GithubConversationPack {
 }
 
 const BODY_TRUNCATION_SENTINEL = '\n[comment truncated]'
+export const GITHUB_CONVERSATION_OPEN = '<github_conversation>'
+export const GITHUB_CONVERSATION_CLOSE = '</github_conversation>'
+
+/** Neutralize wrapper tags so a comment body cannot close the data block. */
+export function neutralizeGithubConversationDelimiters(text: string): string {
+  return text.replace(/<\/?github_conversation>/gi, '[github_conversation]')
+}
 
 function utf8Bytes(value: string): number {
   return Buffer.byteLength(value, 'utf8')
@@ -84,6 +91,8 @@ export function redactCredentialLike(body: string): string {
     .replace(/\bgho_[A-Za-z0-9_]{8,}/g, '[redacted]')
     .replace(/\bgithub_pat_[A-Za-z0-9_]{8,}/g, '[redacted]')
     .replace(/\bsk-[A-Za-z0-9_-]{16,}/g, '[redacted]')
+    .replace(/\bnpm_[A-Za-z0-9]{8,}/g, '[redacted]')
+    .replace(/\bAKIA[A-Z0-9]{16}\b/g, '[redacted]')
     .replace(/\bBearer\s+\S+/gi, '[redacted]')
 }
 
@@ -115,7 +124,9 @@ function toItem(raw: RawGithubComment): GithubConversationItem {
     kind: raw.kind,
     id: raw.id,
     createdAt: raw.createdAt,
-    body: truncateBody(redactCredentialLike(raw.body)),
+    body: truncateBody(
+      neutralizeGithubConversationDelimiters(redactCredentialLike(raw.body))
+    ),
   }
   if (raw.author) item.author = raw.author
   if (raw.path) item.path = raw.path
@@ -171,4 +182,26 @@ export function formatGithubConversationActivity(
 
 export function formatGithubConversationFetchFailed(): string {
   return 'GitHub conversation unavailable'
+}
+
+/** Wrap the pack as delimited untrusted data for domain-agent prompts. */
+export function wrapGithubConversationPack(
+  pack: GithubConversationPack
+): string {
+  const json = neutralizeGithubConversationDelimiters(
+    JSON.stringify(pack, null, 2)
+  )
+  return `${GITHUB_CONVERSATION_OPEN}\n${json}\n${GITHUB_CONVERSATION_CLOSE}`
+}
+
+/**
+ * Domain-agent payload: githubConversation is wrapped, not mixed into the
+ * rest of EnrichedContext JSON, so comment bodies cannot masquerade as
+ * instructions or close the data block.
+ */
+export function formatContextJsonForAgents<
+  T extends { githubConversation?: GithubConversationPack },
+>(context: T): string {
+  const { githubConversation, ...rest } = context
+  return `${wrapGithubConversationPack(githubConversation ?? EMPTY_GITHUB_CONVERSATION)}\n\n${JSON.stringify(rest, null, 2)}`
 }

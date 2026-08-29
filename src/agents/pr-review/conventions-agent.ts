@@ -1,7 +1,7 @@
 import type { ModelClient } from '../../harness/models'
 import type { DomainResult, EnrichedContext } from './schema'
 import { buildConventionsSystem, conventionsUserPrompt } from './prompts'
-import { parseDomainResult } from './domain-agent-utils'
+import { parseDomainResult, domainContextJson } from './domain-agent-utils'
 
 export interface ConventionsAgentOptions {
   enrichedContext: EnrichedContext
@@ -21,7 +21,7 @@ export async function runConventionsAgent(
   const { enrichedContext, model, conventionsDoc } = options
   const start = Date.now()
 
-  const contextJson = JSON.stringify(enrichedContext, null, 2)
+  const contextJson = domainContextJson(enrichedContext)
   const userPrompt = conventionsUserPrompt(contextJson, conventionsDoc)
   const systemPrompt = buildConventionsSystem(conventionsDoc)
 

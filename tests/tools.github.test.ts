@@ -1,6 +1,10 @@
 // @octokit/rest is resolved to __mocks__/@octokit/rest.js via jest.config.js moduleNameMapper.
 // Tests inject their own mock Octokit object via the factory argument.
-import { createGithubTools, fetchPrConversation } from '../src/tools/github'
+import {
+  createGithubTools,
+  createOctokit,
+  fetchPrConversation,
+} from '../src/tools/github'
 import type { Octokit } from '@octokit/rest'
 import {
   AGAMOTTO_REVIEW_FOOTER,
@@ -392,5 +396,12 @@ describe('fetchPrConversation', () => {
       items: [],
       error: 'nope',
     })
+  })
+})
+
+describe('createOctokit', () => {
+  it('returns null for empty or whitespace tokens', () => {
+    expect(createOctokit('')).toBeNull()
+    expect(createOctokit('   ')).toBeNull()
   })
 })

@@ -1,3 +1,4 @@
+import type { Octokit } from '@octokit/rest'
 import { runReview } from '../src/agents/pr-review/coordinator'
 import type { ReviewContext } from '../src/harness/context'
 import type { ModelClient, ModelReply } from '../src/harness/models'
@@ -101,7 +102,7 @@ describe('runReview (coordinator)', () => {
     }
   })
 
-  function makeContext(): ReviewContext {
+  function makeContext(octokit: Octokit | null = null): ReviewContext {
     const checkpoints = new InMemoryCheckpointStore()
     const registry: ToolRegistry = {}
     return {
@@ -118,8 +119,12 @@ describe('runReview (coordinator)', () => {
       },
       registry,
       dispatcher: _reviewId => call => dispatch(call, registry, _reviewId),
-      octokit: null,
+      octokit,
     }
+  }
+
+  function stubOctokit(): Octokit {
+    return {} as Octokit
   }
 
   it('runs the full pipeline and returns a PRReview in quick mode', async () => {
@@ -151,13 +156,13 @@ describe('runReview (coordinator)', () => {
     const userContents = (mockModel.chat as jest.Mock).mock.calls.map(
       call => call[0][0].content as string
     )
-    expect(
-      userContents.some(c =>
-        c.includes(
-          '"githubConversation": {\n    "items": [],\n    "omitted": false\n  }'
-        )
-      )
-    ).toBe(true)
+    expect(userContents.some(c => c.includes('<github_conversation>'))).toBe(
+      true
+    )
+    expect(userContents.some(c => c.includes('"omitted": false'))).toBe(true)
+    expect(userContents.every(c => !c.includes('"githubConversation"'))).toBe(
+      true
+    )
   })
 
   it('emits the SSE done event at the end', async () => {
@@ -367,7 +372,7 @@ describe('runReview (coordinator)', () => {
         },
       ],
     })
-    const context = makeContext()
+    const context = makeContext(stubOctokit())
     const emit = jest.fn()
 
     await runReview({
@@ -385,6 +390,9 @@ describe('runReview (coordinator)', () => {
     expect(
       userContents.some(c => c.includes('Please keep the public API stable'))
     ).toBe(true)
+    expect(userContents.some(c => c.includes('<github_conversation>'))).toBe(
+      true
+    )
     expect(userContents.some(c => c.includes('"kind": "DISCUSSION"'))).toBe(
       true
     )
@@ -398,7 +406,7 @@ describe('runReview (coordinator)', () => {
   it('continues CONTEXT when GitHub conversation fetch throws', async () => {
     mockFullContextAgent()
     mockFetchPrConversation.mockRejectedValue(new Error('API down'))
-    const context = makeContext()
+    const context = makeContext(stubOctokit())
     const emit = jest.fn()
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -420,13 +428,12 @@ describe('runReview (coordinator)', () => {
     const userContents = (mockModel.chat as jest.Mock).mock.calls.map(
       call => call[0][0].content as string
     )
-    expect(
-      userContents.some(c =>
-        c.includes(
-          '"githubConversation": {\n    "items": [],\n    "omitted": false\n  }'
-        )
-      )
-    ).toBe(true)
+    expect(userContents.some(c => c.includes('<github_conversation>'))).toBe(
+      true
+    )
+    expect(userContents.every(c => !c.includes('"githubConversation"'))).toBe(
+      true
+    )
   })
 
   it('treats fetch error field as a miss without failing CONTEXT', async () => {
@@ -435,7 +442,7 @@ describe('runReview (coordinator)', () => {
       items: [],
       error: 'rate limited',
     })
-    const context = makeContext()
+    const context = makeContext(stubOctokit())
     const emit = jest.fn()
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -459,7 +466,7 @@ describe('runReview (coordinator)', () => {
 
   it('does not fetch when the PR URL cannot be parsed', async () => {
     mockFullContextAgent()
-    const context = makeContext()
+    const context = makeContext(stubOctokit())
     const emit = jest.fn()
 
     await runReview({
@@ -478,5 +485,28 @@ describe('runReview (coordinator)', () => {
         label: 'GitHub conversation unavailable',
       })
     )
+  })
+
+  it('skips GitHub conversation fetch when octokit is null', async () => {
+    mockFullContextAgent()
+    const context = makeContext(null)
+    const emit = jest.fn()
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await runReview({
+      reviewId: 'test-rev-12',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      mode: 'full',
+      context,
+      emit,
+    })
+
+    warnSpy.mockRestore()
+    expect(mockFetchPrConversation).not.toHaveBeenCalled()
+    expect(emit).toHaveBeenCalledWith('progress', {
+      tool: 'github_conversation',
+      args: { itemCount: 0, omitted: false, failed: true },
+      label: 'GitHub conversation unavailable',
+    })
   })
 })
