@@ -5,6 +5,9 @@
  *
  * Defaults to `generated/ath-43-control-spec.json` and `generated/control-reviews`.
  * Both live outside version control on purpose — see `src/lib/control-scoring.ts`.
+ *
+ * Run via plain `node` — Node v24 strips TypeScript types natively, so no
+ * ts-node or build step is required. See .nvmrc for the expected version.
  */
 
 import { readFileSync, readdirSync } from 'node:fs'

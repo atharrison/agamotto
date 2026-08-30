@@ -87,6 +87,11 @@ export function mergeResults(results: DomainResult[]): Finding[] {
       if (!isDuplicate(winner, all[j], shared)) continue
 
       // Duplicate found — merge
+      // Both ids go into corroborated before the winner reassignment, so
+      // whichever id preferredWinner picks as the surviving title/body, it
+      // is already in the set. The add after reassignment is defensive: it
+      // covers the case where winner's id changed identity inside the spread,
+      // making the intent explicit regardless of object identity.
       corroborated.add(winner.id)
       corroborated.add(all[j].id)
       seen.add(all[j].id)
@@ -99,6 +104,7 @@ export function mergeResults(results: DomainResult[]): Finding[] {
         confidence: Math.max(winner.confidence, all[j].confidence),
         categories: mergeCategories(winner, all[j]),
       }
+      corroborated.add(winner.id)
       winnerIds = new Set([...winnerIds, ...identifiers[j]])
     }
 

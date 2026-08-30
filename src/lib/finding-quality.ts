@@ -118,6 +118,8 @@ export function applyFindingQualityFilters(
   env: Record<string, string | undefined> = process.env
 ): Finding[] {
   if (!isFindingQualityFilterEnabled(env)) return findings
+  // Pre-split once so isFileTruncated doesn't re-split for every finding.
+  const diffSections = buildDiffSections(context.diff)
   return findings.flatMap(f => {
     if (isWithdrawal(f)) return []
 
@@ -131,7 +133,7 @@ export function applyFindingQualityFilters(
     if (hasTitleBodyContradiction(next)) {
       next = { ...next, body: appendNote(next.body, TITLE_BODY_NOTE) }
     }
-    return [applyGrounding(next, context)]
+    return [applyGrounding(next, context, diffSections)]
   })
 }
 
@@ -187,8 +189,12 @@ function markQualityAdjusted(f: Finding, note: string): Finding {
   })
 }
 
-function applyGrounding(finding: Finding, context: EnrichedContext): Finding {
-  const truncated = isFileTruncated(finding.file, context)
+function applyGrounding(
+  finding: Finding,
+  context: EnrichedContext,
+  diffSections: Map<string, string>
+): Finding {
+  const truncated = isFileTruncated(finding.file, context, diffSections)
   if (isPlaceholderClaim(finding) && truncated) {
     return markQualityAdjusted(finding, TRUNCATED_FILE_NOTE)
   }
@@ -223,28 +229,42 @@ function isDeletionClaim(f: Finding): boolean {
  * truncation elsewhere in a large PR no longer taints findings on files that
  * were shown in full. Only when the path has no section at all do we fall back
  * to the whole diff, because then the agent is citing bytes we never sent.
+ *
+ * `diffSections` is pre-computed once per filter pass; call `buildDiffSections`
+ * before iterating findings to avoid re-splitting the full diff per finding.
  */
-function isFileTruncated(file: string, context: EnrichedContext): boolean {
+function isFileTruncated(
+  file: string,
+  context: EnrichedContext,
+  diffSections: Map<string, string>
+): boolean {
   if (
     context.fileCoverage.some(c => c.file === file && c.status === 'TRUNCATED')
   ) {
     return true
   }
-  const section = diffSectionFor(context.diff, file)
+  const section = diffSections.get(file) ?? null
   if (section !== null) return hasTruncationMarker(section)
   return (
     hasTruncationMarker(context.diff) && context.filesChanged.includes(file)
   )
 }
 
-/** The `diff --git` block naming `file`, or null when the diff omits it. */
-function diffSectionFor(diff: string, file: string): string | null {
+/**
+ * Split the assembled diff into a map of filename → section body.
+ * Called once per filter pass so per-finding truncation checks are O(1) lookups.
+ */
+function buildDiffSections(diff: string): Map<string, string> {
+  const map = new Map<string, string>()
   for (const section of diff.split(/^diff --git /m)) {
     if (!section) continue
-    const header = section.slice(0, section.indexOf('\n'))
-    if (header.includes(file)) return section
+    const newlineIdx = section.indexOf('\n')
+    const header = newlineIdx === -1 ? section : section.slice(0, newlineIdx)
+    // Header is `a/path b/path` — extract from the b/ side as the canonical name
+    const bMatch = header.match(/\s+b\/(.+)$/)
+    if (bMatch) map.set(bMatch[1], section)
   }
-  return null
+  return map
 }
 
 function claimedSnippetStillPresent(
