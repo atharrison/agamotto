@@ -1,7 +1,10 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { type NextRequest, NextResponse } from 'next/server'
-import { GH_TOKEN_COOKIE } from '../../../../src/lib/supabase/server'
+import {
+  clearGitHubTokenCookies,
+  setGitHubTokenCookies,
+} from '../../../../src/lib/github-auth'
 
 /**
  * GET /api/auth/callback
@@ -61,17 +64,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(new URL('/login?error=auth_failed', origin))
     }
 
-    // Supabase drops provider_token from the session on every token refresh
-    // (the refresh endpoint doesn't return it). Store it in a separate httpOnly
-    // cookie so getGitHubToken() can read it on subsequent requests.
+    // Supabase drops provider_token / provider_refresh_token on every session
+    // refresh. Persist both in httpOnly cookies so getFreshGitHubToken() can
+    // rotate the access token (ATH-44) instead of posting with a stale 403.
     const providerToken = exchangeData.session?.provider_token
     if (providerToken) {
-      cookieStore.set(GH_TOKEN_COOKIE, providerToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 8, // 8 hours — matches typical GitHub OAuth token lifetime
-        path: '/',
+      setGitHubTokenCookies(cookieStore, {
+        accessToken: providerToken,
+        refreshToken: exchangeData.session?.provider_refresh_token ?? undefined,
       })
     }
 
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
       // Best-effort sign-out — if it fails, middleware blocks on the next request.
       const denyAndRedirect = async (error: string) => {
         await supabase.auth.signOut().catch(() => null)
-        cookieStore.delete(GH_TOKEN_COOKIE)
+        clearGitHubTokenCookies(cookieStore)
         return NextResponse.redirect(new URL(`/login?error=${error}`, origin))
       }
 

@@ -1,0 +1,183 @@
+/**
+ * ATH-42 — map the finalize `comment` payload into banner copy + clipboard body.
+ */
+
+import {
+  FinalizeBannerTone,
+  buildFinalizeBanner,
+  commentMarkdownFromResult,
+  githubPostFailedReason,
+} from '../src/lib/finalize-comment'
+
+describe('commentMarkdownFromResult', () => {
+  it('returns a non-empty body string', () => {
+    expect(commentMarkdownFromResult({ body: '## Review\n' })).toBe(
+      '## Review\n'
+    )
+  })
+
+  it('returns undefined for missing or empty bodies', () => {
+    expect(commentMarkdownFromResult(null)).toBeUndefined()
+    expect(commentMarkdownFromResult({ error: 'nope' })).toBeUndefined()
+    expect(commentMarkdownFromResult({ body: '' })).toBeUndefined()
+    expect(commentMarkdownFromResult({ body: 1 })).toBeUndefined()
+  })
+})
+
+describe('githubPostFailedReason', () => {
+  it('prefers comment.error', () => {
+    expect(
+      githubPostFailedReason({
+        error: 'GitHub session expired — sign in again',
+      })
+    ).toBe('GitHub session expired — sign in again')
+  })
+
+  it('uses skipped.reason when the post was skipped', () => {
+    expect(
+      githubPostFailedReason({
+        skipped: true,
+        reason: 'GITHUB_TOKEN not configured',
+      })
+    ).toBe('GITHUB_TOKEN not configured')
+    expect(githubPostFailedReason({ skipped: true })).toBe(
+      'GitHub post was skipped'
+    )
+    expect(githubPostFailedReason({ skipped: true, reason: '' })).toBe(
+      'GitHub post was skipped'
+    )
+  })
+
+  it('returns undefined for a successful post', () => {
+    expect(
+      githubPostFailedReason({ id: 1, url: 'https://github.com/x', body: 'ok' })
+    ).toBeUndefined()
+    expect(githubPostFailedReason(null)).toBeUndefined()
+    expect(githubPostFailedReason({ error: '' })).toBeUndefined()
+  })
+})
+
+describe('buildFinalizeBanner', () => {
+  it('returns an ERROR banner when HTTP failed', () => {
+    expect(
+      buildFinalizeBanner({
+        httpOk: false,
+        httpError: 'Review not found or not yet complete.',
+        approve: false,
+        postComment: true,
+        comment: null,
+      })
+    ).toEqual({
+      tone: FinalizeBannerTone.ERROR,
+      message: 'Error: Review not found or not yet complete.',
+    })
+  })
+
+  it('uses a fallback message when HTTP failed with no error string', () => {
+    expect(
+      buildFinalizeBanner({
+        httpOk: false,
+        approve: false,
+        postComment: true,
+        comment: null,
+      }).message
+    ).toBe('Error: unexpected server response')
+  })
+
+  it('warns and offers copy when GitHub post failed but the review was saved', () => {
+    expect(
+      buildFinalizeBanner({
+        httpOk: true,
+        approve: false,
+        postComment: true,
+        comment: {
+          error: 'GitHub session expired — sign in again',
+          body: '## Review\n',
+        },
+        accepted: 2,
+        rejected: 1,
+      })
+    ).toEqual({
+      tone: FinalizeBannerTone.WARNING,
+      message:
+        'Review saved, but posting to GitHub failed — GitHub session expired — sign in again. You can copy the comment manually.',
+      copyBody: '## Review\n',
+    })
+  })
+
+  it('warns when the post was skipped', () => {
+    const banner = buildFinalizeBanner({
+      httpOk: true,
+      approve: true,
+      postComment: true,
+      comment: {
+        skipped: true,
+        reason: 'GITHUB_TOKEN not configured',
+        body: 'LGTM!',
+      },
+    })
+    expect(banner.tone).toBe(FinalizeBannerTone.WARNING)
+    expect(banner.copyBody).toBe('LGTM!')
+    expect(banner.message).toMatch(/GITHUB_TOKEN not configured/)
+  })
+
+  it('shows the approval success copy and comment body after a post', () => {
+    expect(
+      buildFinalizeBanner({
+        httpOk: true,
+        approve: true,
+        postComment: true,
+        comment: { id: 7, url: 'https://github.com/c/7', body: 'LGTM!' },
+      })
+    ).toEqual({
+      tone: FinalizeBannerTone.SUCCESS,
+      message: '✓ Approved — LGTM comment posted to GitHub',
+      copyBody: 'LGTM!',
+    })
+  })
+
+  it('shows marked-as-approved when the user did not post', () => {
+    expect(
+      buildFinalizeBanner({
+        httpOk: true,
+        approve: true,
+        postComment: false,
+        comment: null,
+      })
+    ).toEqual({
+      tone: FinalizeBannerTone.SUCCESS,
+      message: '✓ Marked as approved',
+    })
+  })
+
+  it('shows the submit summary and comment body after a post', () => {
+    expect(
+      buildFinalizeBanner({
+        httpOk: true,
+        approve: false,
+        postComment: true,
+        comment: { id: 9, url: 'https://github.com/c/9', body: '## Review\n' },
+        accepted: 3,
+        rejected: 1,
+      })
+    ).toEqual({
+      tone: FinalizeBannerTone.SUCCESS,
+      message: 'Submitted: 3 accepted, 1 rejected',
+      copyBody: '## Review\n',
+    })
+  })
+
+  it('defaults accepted/rejected to zero when summary counts are omitted', () => {
+    expect(
+      buildFinalizeBanner({
+        httpOk: true,
+        approve: false,
+        postComment: false,
+        comment: null,
+      })
+    ).toEqual({
+      tone: FinalizeBannerTone.SUCCESS,
+      message: 'Submitted: 0 accepted, 0 rejected',
+    })
+  })
+})

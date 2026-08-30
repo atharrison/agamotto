@@ -8,7 +8,10 @@ import {
   getReview,
 } from '../../../../src/memory/review-store'
 import { markPrReviewFailed } from '../../../../src/memory/tracked-pr-store'
-import { getGitHubToken } from '../../../../src/lib/supabase/server'
+import {
+  getFreshGitHubToken,
+  githubTokenFromFresh,
+} from '../../../../src/lib/github-auth'
 import { parsePrUrl } from '../../../../src/lib/queue'
 import {
   ReviewStreamKind,
@@ -152,7 +155,7 @@ export async function GET(
       try {
         // Prefer the OAuth provider token from the user's GitHub session;
         // falls back to GITHUB_TOKEN env var if not available.
-        const githubToken = await getGitHubToken()
+        const githubToken = githubTokenFromFresh(await getFreshGitHubToken())
         const context = createReviewContext(undefined, githubToken)
         const review = await runReview({
           reviewId,

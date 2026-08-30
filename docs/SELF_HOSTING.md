@@ -131,14 +131,24 @@ No local CLI setup needed. Future migrations (when you pull updates from upstrea
 
 3. Click **Register application**.
 
-### 4b. Copy the credentials
+### 4b. Enable token expiration
+
+GitHub OAuth Apps issue non-expiring access tokens unless you opt in. Agamotto needs expiring tokens so it can refresh them when posting PR comments. Without this, comment posts 403 after ~8 hours until the user signs in again.
+
+1. Open the OAuth App → **Optional features**.
+2. Click **Opt-in** on **Token expiration**. Access tokens then expire after 8 hours; GitHub also issues a refresh token.
+3. Existing tokens are not affected. After opting in (or after first deploying Agamotto with this setting), users must **sign out and sign in once** so Agamotto can store the refresh cookie.
+
+`GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` must be from this same OAuth App — Agamotto uses them to refresh the user's token.
+
+### 4c. Copy the credentials
 
 - **Client ID** → `GITHUB_CLIENT_ID`
 - Click **Generate a new client secret** → `GITHUB_CLIENT_SECRET`
 
 > **Scopes**: Agamotto uses GitHub OAuth for authentication only. Read access to PR diffs comes from the authenticated user's token, which already has `repo` access on sign-in. No additional scopes need to be set on the OAuth App itself.
 
-### 4c. Complete the Supabase GitHub provider
+### 4d. Complete the Supabase GitHub provider
 
 Go back to the Supabase GitHub provider page you opened in step 3b. Paste in the **Client ID** and **Client Secret**, then click **Save**.
 
@@ -264,14 +274,14 @@ Keep the secret handy — you'll paste it into GitHub in the next step.
 
 ### Required
 
-| Variable                               | Description                                                       |
-| -------------------------------------- | ----------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY`                    | Anthropic API key. Needs access to Claude Sonnet.                 |
-| `GITHUB_CLIENT_ID`                     | GitHub OAuth App client ID.                                       |
-| `GITHUB_CLIENT_SECRET`                 | GitHub OAuth App client secret.                                   |
-| `NEXT_PUBLIC_SUPABASE_URL`             | Supabase project URL (`https://xxxx.supabase.co`).                |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase `anon` key.                                              |
-| `SUPABASE_SERVICE_ROLE_KEY`            | Supabase `service_role` key. Keep secret — grants full DB access. |
+| Variable                               | Description                                                                                         |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`                    | Anthropic API key. Needs access to Claude Sonnet.                                                   |
+| `GITHUB_CLIENT_ID`                     | GitHub OAuth App client ID (same app as the Supabase GitHub provider; used to refresh user tokens). |
+| `GITHUB_CLIENT_SECRET`                 | GitHub OAuth App client secret.                                                                     |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Supabase project URL (`https://xxxx.supabase.co`).                                                  |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase `anon` key.                                                                                |
+| `SUPABASE_SERVICE_ROLE_KEY`            | Supabase `service_role` key. Keep secret — grants full DB access.                                   |
 
 ### Required in production
 

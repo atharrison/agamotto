@@ -16,6 +16,11 @@ import {
   formatTokenUsage,
   type ReviewRunStatsPayload,
 } from '../../../src/lib/review-run-stats'
+import {
+  FinalizeBannerTone,
+  buildFinalizeBanner,
+  type FinalizeBanner,
+} from '../../../src/lib/finalize-comment'
 
 interface Finding {
   id: string
@@ -97,6 +102,42 @@ function formatElapsed(ms: number): string {
   return m > 0 ? `${m}m ${s % 60}s` : `${s}s`
 }
 
+const BANNER_TONE_CLASS: Record<FinalizeBannerTone, string> = {
+  [FinalizeBannerTone.SUCCESS]:
+    'border-green-700 bg-green-950/40 text-green-400',
+  [FinalizeBannerTone.WARNING]:
+    'border-amber-700 bg-amber-950/40 text-amber-300',
+  [FinalizeBannerTone.ERROR]: 'border-red-800 bg-red-950/40 text-red-400',
+}
+
+function SubmitBannerView({
+  banner,
+  copied,
+  onCopy,
+}: {
+  banner: FinalizeBanner
+  copied: boolean
+  onCopy: (text: string) => void
+}) {
+  const copyBody = banner.copyBody
+  return (
+    <div
+      className={`rounded-lg border px-4 py-2.5 text-sm font-medium ${BANNER_TONE_CLASS[banner.tone]}`}
+    >
+      <p>{banner.message}</p>
+      {copyBody && (
+        <button
+          type="button"
+          onClick={() => onCopy(copyBody)}
+          className="mt-2 rounded bg-gray-800 px-3 py-1 text-xs font-semibold text-white hover:bg-gray-700"
+        >
+          {copied ? 'Copied' : 'Copy comment'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 interface Props {
   reviewId: string
   prUrl: string
@@ -125,7 +166,8 @@ export function ReviewShell({
   const [editBody, setEditBody] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const [submitResult, setSubmitResult] = useState<string | null>(null)
+  const [submitResult, setSubmitResult] = useState<FinalizeBanner | null>(null)
+  const [copied, setCopied] = useState(false)
   const [phaseStatuses, setPhaseStatuses] = useState<
     Record<string, PhaseStatus>
   >(
@@ -351,6 +393,16 @@ export function ReviewShell({
     setEditingId(null)
   }
 
+  async function copyComment(text: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard can be blocked (non-HTTPS, permissions); the banner still shows.
+    }
+  }
+
   async function handleSubmit(postComment: boolean) {
     setSubmitting(true)
     setSubmitResult(null) // clear any previous error before retry
@@ -375,13 +427,27 @@ export function ReviewShell({
       })
       const data = await res.json()
       setSubmitResult(
-        res.ok
-          ? `Submitted: ${data.summary.accepted} accepted, ${data.summary.rejected} rejected`
-          : `Error: ${data.error}`
+        buildFinalizeBanner({
+          httpOk: res.ok,
+          httpError: data.error,
+          approve: false,
+          postComment,
+          comment: data.comment,
+          accepted: data.summary?.accepted,
+          rejected: data.summary?.rejected,
+        })
       )
       if (res.ok) setSubmitted(true)
     } catch {
-      setSubmitResult('Error: unexpected server response')
+      setSubmitResult(
+        buildFinalizeBanner({
+          httpOk: false,
+          httpError: 'unexpected server response',
+          approve: false,
+          postComment,
+          comment: null,
+        })
+      )
     } finally {
       setSubmitting(false)
     }
@@ -398,15 +464,25 @@ export function ReviewShell({
       })
       const data = await res.json()
       setSubmitResult(
-        res.ok
-          ? postComment
-            ? '✓ Approved — LGTM comment posted to GitHub'
-            : '✓ Marked as approved'
-          : `Error: ${data.error}`
+        buildFinalizeBanner({
+          httpOk: res.ok,
+          httpError: data.error,
+          approve: true,
+          postComment,
+          comment: data.comment,
+        })
       )
       if (res.ok) setSubmitted(true)
     } catch {
-      setSubmitResult('Error: unexpected server response')
+      setSubmitResult(
+        buildFinalizeBanner({
+          httpOk: false,
+          httpError: 'unexpected server response',
+          approve: true,
+          postComment,
+          comment: null,
+        })
+      )
     } finally {
       setSubmitting(false)
     }
@@ -590,10 +666,12 @@ export function ReviewShell({
         {/* Submit controls */}
         {status === 'done' && total > 0 && (
           <div className="mt-6">
-            {submitted ? (
-              <p className="rounded-lg border border-green-700 bg-green-950/40 px-4 py-2.5 text-sm font-medium text-green-400">
-                {submitResult}
-              </p>
+            {submitted && submitResult ? (
+              <SubmitBannerView
+                banner={submitResult}
+                copied={copied}
+                onCopy={copyComment}
+              />
             ) : (
               <button
                 disabled={submitting}
@@ -611,10 +689,12 @@ export function ReviewShell({
         {/* Clean review: no findings → Approve CTA */}
         {status === 'done' && total === 0 && (
           <div className="mt-6">
-            {submitted ? (
-              <p className="rounded-lg border border-green-700 bg-green-950/40 px-4 py-2.5 text-sm font-medium text-green-400">
-                {submitResult}
-              </p>
+            {submitted && submitResult ? (
+              <SubmitBannerView
+                banner={submitResult}
+                copied={copied}
+                onCopy={copyComment}
+              />
             ) : (
               <button
                 disabled={submitting}
@@ -629,9 +709,13 @@ export function ReviewShell({
 
         {/* Error result (only shown when not yet submitted successfully) */}
         {submitResult && !submitted && (
-          <p className="mt-4 rounded bg-gray-900 px-4 py-2 text-sm text-red-400">
-            {submitResult}
-          </p>
+          <div className="mt-4">
+            <SubmitBannerView
+              banner={submitResult}
+              copied={copied}
+              onCopy={copyComment}
+            />
+          </div>
         )}
       </div>
 

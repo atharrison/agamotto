@@ -17,6 +17,7 @@ const mockMarkPrReviewFailed = jest.fn()
 const mockRunReview = jest.fn()
 const mockCreateReviewContext = jest.fn()
 const mockGetGitHubToken = jest.fn()
+const mockGetFreshGitHubToken = jest.fn()
 
 jest.mock('../src/memory/review-store', () => ({
   getReview: (...args: unknown[]) => mockGetReview(...args),
@@ -35,6 +36,12 @@ jest.mock('../src/harness/context', () => ({
 
 jest.mock('../src/lib/supabase/server', () => ({
   getGitHubToken: (...args: unknown[]) => mockGetGitHubToken(...args),
+}))
+
+jest.mock('../src/lib/github-auth', () => ({
+  getFreshGitHubToken: (...args: unknown[]) => mockGetFreshGitHubToken(...args),
+  githubTokenFromFresh: (fresh: { ok: boolean; token?: string }) =>
+    fresh.ok ? (fresh.token ?? null) : null,
 }))
 
 jest.mock('../src/memory/tracked-pr-store', () => ({
@@ -98,6 +105,10 @@ beforeEach(() => {
   mockRunReview.mockResolvedValue(COMPLETE_RESULT)
   mockCreateReviewContext.mockReturnValue({})
   mockGetGitHubToken.mockResolvedValue(null)
+  mockGetFreshGitHubToken.mockResolvedValue({
+    ok: false,
+    error: 'NO_SESSION',
+  })
 })
 
 describe('GET /api/review/[id] — ATH-30 stored replay', () => {
@@ -196,11 +207,25 @@ describe('GET /api/review/[id] — live pipeline', () => {
     )
 
     expect(mockCreateReview).toHaveBeenCalledWith(REVIEW_ID, PR_URL, 'full')
+    expect(mockGetFreshGitHubToken).toHaveBeenCalled()
+    expect(mockCreateReviewContext).toHaveBeenCalledWith(undefined, null)
     expect(mockRunReview).toHaveBeenCalledWith(
       expect.objectContaining({ reviewId: REVIEW_ID, prUrl: PR_URL })
     )
     expect(mockCompleteReview).toHaveBeenCalledWith(REVIEW_ID, COMPLETE_RESULT)
     expect(eventsOfType(text, 'error')).toEqual([])
+  })
+
+  it('passes a refreshed GitHub token into the review context', async () => {
+    mockGetReview.mockResolvedValue(null)
+    mockGetFreshGitHubToken.mockResolvedValue({
+      ok: true,
+      token: 'ghu_fresh',
+    })
+
+    await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
+
+    expect(mockCreateReviewContext).toHaveBeenCalledWith(undefined, 'ghu_fresh')
   })
 
   it('skips createReview when a RUNNING row already exists', async () => {

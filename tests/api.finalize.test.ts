@@ -34,7 +34,20 @@ jest.mock('../src/memory/index', () => ({
 jest.mock('../src/lib/supabase/server', () => ({
   getGitHubToken: jest.fn().mockResolvedValue(null),
   GH_TOKEN_COOKIE: 'gh_provider_token',
+  GH_REFRESH_COOKIE: 'gh_provider_refresh_token',
 }))
+
+const mockGetFreshGitHubToken = jest.fn()
+jest.mock('../src/lib/github-auth', () => {
+  const actual = jest.requireActual(
+    '../src/lib/github-auth'
+  ) as typeof import('../src/lib/github-auth')
+  return {
+    ...actual,
+    getFreshGitHubToken: (...args: unknown[]) =>
+      mockGetFreshGitHubToken(...args),
+  }
+})
 
 const mockMarkPrReviewed = jest.fn().mockResolvedValue(undefined)
 jest.mock('../src/memory/tracked-pr-store', () => ({
@@ -98,6 +111,10 @@ beforeEach(() => {
   mockMarkPrReviewed.mockResolvedValue(undefined)
   mockStoreReview.mockResolvedValue(undefined)
   mockCreateOctokit.mockReturnValue(null)
+  mockGetFreshGitHubToken.mockResolvedValue({
+    ok: false,
+    error: 'NO_SESSION',
+  })
   delete process.env.DRY_RUN
 })
 
@@ -252,6 +269,7 @@ describe('POST /api/review/[id]/finalize — submit path', () => {
     expect(body.comment).toEqual({
       skipped: true,
       reason: 'GITHUB_TOKEN not configured',
+      body: '## Review\n',
     })
   })
 })
@@ -277,6 +295,7 @@ describe('POST /api/review/[id]/finalize — GitHub comment + tracked_prs edges'
     expect(body.comment).toEqual({
       skipped: true,
       reason: 'Could not parse prUrl for GitHub API',
+      body: 'LGTM!',
     })
     expect(body.warning).toMatch(/prUrl could not be parsed/)
     expect(spy).toHaveBeenCalled()
@@ -319,6 +338,7 @@ describe('POST /api/review/[id]/finalize — GitHub comment + tracked_prs edges'
     expect(body.comment).toEqual({
       id: 99,
       url: 'https://github.com/comment/99',
+      body: '## Review\n',
     })
     expect(mockCreateComment).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -336,6 +356,7 @@ describe('POST /api/review/[id]/finalize — GitHub comment + tracked_prs edges'
     mockCreateComment.mockRejectedValue(new Error('rate limited'))
     mockGetReview.mockResolvedValue(makeCompleteReview(false))
     mockSetReviewSubmission.mockResolvedValue(undefined)
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
     const res = await callFinalize(REVIEW_ID, {
       approve: true,
       decisions: [],
@@ -344,5 +365,81 @@ describe('POST /api/review/[id]/finalize — GitHub comment + tracked_prs edges'
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.comment.error).toMatch(/rate limited/)
+    expect(body.comment.body).toBe('LGTM!')
+    expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('does not post when GitHub token refresh fails (approve path)', async () => {
+    const { GitHubAuthError, GITHUB_SESSION_EXPIRED_MESSAGE } =
+      await import('../src/lib/github-auth')
+    mockGetFreshGitHubToken.mockResolvedValue({
+      ok: false,
+      error: GitHubAuthError.REFRESH_FAILED,
+    })
+    mockGetReview.mockResolvedValue(makeCompleteReview(false))
+    mockSetReviewSubmission.mockResolvedValue(undefined)
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await callFinalize(REVIEW_ID, {
+      approve: true,
+      decisions: [],
+      postComment: true,
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.comment).toEqual({
+      error: GITHUB_SESSION_EXPIRED_MESSAGE,
+      body: 'LGTM!',
+    })
+    expect(mockCreateOctokit).not.toHaveBeenCalled()
+    expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('does not post when GitHub token refresh fails (submit path)', async () => {
+    const { GitHubAuthError, GITHUB_SESSION_EXPIRED_MESSAGE } =
+      await import('../src/lib/github-auth')
+    mockGetFreshGitHubToken.mockResolvedValue({
+      ok: false,
+      error: GitHubAuthError.REFRESH_FAILED,
+    })
+    mockGetReview.mockResolvedValue(makeCompleteReview(true))
+    mockSetReviewSubmission.mockResolvedValue(undefined)
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await callFinalize(REVIEW_ID, {
+      decisions: [{ findingId: 'f1', action: 'ACCEPT' }],
+      postComment: true,
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.comment).toEqual({
+      error: GITHUB_SESSION_EXPIRED_MESSAGE,
+      body: '## Review\n',
+    })
+    expect(mockCreateOctokit).not.toHaveBeenCalled()
+    expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('passes the refreshed token to Octokit', async () => {
+    mockGetFreshGitHubToken.mockResolvedValue({
+      ok: true,
+      token: 'ghu_fresh',
+    })
+    mockCreateOctokit.mockReturnValue({
+      issues: { createComment: mockCreateComment },
+    })
+    mockCreateComment.mockResolvedValue({
+      data: { id: 7, html_url: 'https://github.com/comment/7' },
+    })
+    mockGetReview.mockResolvedValue(makeCompleteReview(false))
+    mockSetReviewSubmission.mockResolvedValue(undefined)
+    const res = await callFinalize(REVIEW_ID, {
+      approve: true,
+      decisions: [],
+      postComment: true,
+    })
+    expect(res.status).toBe(200)
+    expect(mockCreateOctokit).toHaveBeenCalledWith('ghu_fresh')
   })
 })

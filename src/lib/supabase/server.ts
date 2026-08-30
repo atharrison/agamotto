@@ -4,6 +4,8 @@ import { cookies } from 'next/headers'
 import { AGAMOTTO_SCHEMA } from './schema'
 
 export const GH_TOKEN_COOKIE = 'gh_provider_token'
+/** GitHub OAuth refresh token — lasts months; access token is 8 hours. */
+export const GH_REFRESH_COOKIE = 'gh_provider_refresh_token'
 
 /**
  * Create a Supabase client using the service role key.
@@ -56,6 +58,9 @@ export async function createSupabaseServerClient() {
  * We can't rely on getSession().provider_token because Supabase drops the
  * provider_token from the session on every access-token refresh — it is only
  * present in the initial exchangeCodeForSession response.
+ *
+ * For GitHub writes (finalize, review pipeline), use getFreshGitHubToken()
+ * instead — this helper does not probe GitHub or rotate a stale token.
  */
 export async function getGitHubToken(): Promise<string | null> {
   try {

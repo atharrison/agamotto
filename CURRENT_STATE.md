@@ -2,6 +2,42 @@
 
 ---
 
+# Session State — 2026-08-30 01:31
+
+## Context
+
+Prod was red on `next build`; hotfix + preflight CI shipped to `main`; Railway deploy succeeded. MVP Completion is done. Branch is `main`.
+
+## Decisions Made
+
+- `npm run build` **(**`next build`**) is the typecheck gate**, not `tsc --noEmit`. Next.js typechecks the app graph and rejects non-literal route exports (`maxDuration = Math.ceil(...)`). Jest transpile-only; Tests workflow never ran `next build`.
+- `npm run preflight` = `format:check && lint && build` — same command locally and in `.github/workflows/pre-flight-checks.yml`. Tests stay in the Tests workflow (no `npm test` in preflight).
+- **Do not run** `npm install` **in agent sessions** — Andrew runs it
+
+## Tickets Touched
+
+- No Linear tickets this session. Unblocked prod after ATH-35/39 (`#12`) merge.
+
+## What Was Tried and Abandoned
+
+- `tsc --noEmit` as the merge gate — red on test files; misses Next.js page-config.
+- Jest 29 glob@7 / better-sqlite3 11 `prebuild-install` — upgraded Jest 30 + sqlite 13; leftover `glob@10` is `test-exclude@7` (override `test-exclude@^8`).
+
+## Open Questions / Blockers
+
+- Tomorrow: pick a **Polish** ticket — ATH-44, ATH-48, or ATH-49. ATH-43 plant PR `#11` stays open; do not merge with plants.
+
+## Next Steps
+
+1. Choose ATH-44 / ATH-48 / ATH-49 (not ATH-43).
+2. Optional: commit this `CURRENT_STATE.md` if it is still dirty on `main`.
+
+## Key Files
+
+- `app/api/review/[id]/route.ts` (`maxDuration = 300` literal), `src/lib/review-history-payload.ts`, `.github/workflows/pre-flight-checks.yml`
+
+---
+
 # Session State — 2026-08-30 00:40
 
 ## Context
@@ -10,10 +46,10 @@ ATH-35/39 merged as [PR #12](https://github.com/atharrison/agamotto/pull/12). Fi
 
 ## Decisions Made
 
-- **Stop iterating `finding-quality.ts` on #11** — tickets met on ATH-16/15/38 fixtures; plant PR rarely emits hedge/truncation sentences. Remaining noise is domain emission (ATH-48), not more regex.
-- **`FINDING_QUALITY_FILTER` default ON** if unset. R6–R8 valid without `.env`. Auto-adjusted notes prove the filter on PR #12, not on R6–R8.
+- **Stop iterating** `finding-quality.ts` **on #11** — tickets met on ATH-16/15/38 fixtures; plant PR rarely emits hedge/truncation sentences. Remaining noise is domain emission (ATH-48), not more regex.
+- `FINDING_QUALITY_FILTER` **default ON** if unset. R6–R8 valid without `.env`. Auto-adjusted notes prove the filter on PR #12, not on R6–R8.
 - **Never run destructive SQL** — output it; Andrew executes. Memory added.
-- **Keep #11 plants + `generated/control-reviews/`** as ATH-48 measuring stick. R8 (`29b9ba0b`) left in local DB on purpose.
+- **Keep #11 plants +** `generated/control-reviews/` as ATH-48 measuring stick. R8 (`29b9ba0b`) left in local DB on purpose.
 - **Prompt overlays, not filter round 2** — ATH-48 absorbs ATH-23 (conventions editor never wired). ATH-49 is confidence floor UI, design first (not a locked “slider”).
 
 ## Tickets Touched
@@ -54,7 +90,7 @@ ATH-19 (history page + error handling) shipped as [PR #10](https://github.com/at
 
 ## Decisions Made
 
-- **`healStuckInReviewRows` stays in hot path for now** — ATH-47 filed to move it out. Option 1 (call from `completeReview`/`failReview`) is the likely right long-term answer; deferred.
+- `healStuckInReviewRows` **stays in hot path for now** — ATH-47 filed to move it out. Option 1 (call from `completeReview`/`failReview`) is the likely right long-term answer; deferred.
 - **Failed first review resets to OPEN, no error indicator** — acknowledged as acceptable low-priority behavior. ATH-46 tracks whether this needs UX treatment.
 - **24-item Agamotto review of PR #10: no action** — posted [comment on PR #10](https://github.com/atharrison/agamotto/pull/10#issuecomment-5466186879) explaining: most items were false positives from context gaps; scope mismatch; architecture already decided; ATH-46/ATH-47 cover the two real items. Next ticket is review quality (ATH-35/ATH-39).
 - **Token limits bumped to 500k** in `.env` (`MAX_TOKENS=500000`) — 200k was not enough for the large PR #10 diff. Env var wiring from this PR is what made this adjustable.
@@ -96,7 +132,7 @@ ATH-32 merged as [PR #9](https://github.com/atharrison/agamotto/pull/9) (`683611
 
 ## Decisions Made
 
-- **Coordinator-inject `githubConversation`**, same pattern as ATH-18 `priorRounds`. Do not add context-agent tool steps. Quick mode skips the fetch (empty pack).
+- **Coordinator-inject** `githubConversation`, same pattern as ATH-18 `priorRounds`. Do not add context-agent tool steps. Quick mode skips the fetch (empty pack).
 - **Fetch in parallel, write after context agent**: `loadGithubConversation` starts before `runContextAgent`; overwrite is `{ ...ctxResult.context, priorRounds, githubConversation }`. Model JSON cannot win.
 - **Untrusted data**: wrap pack in `<github_conversation>`; neutralize those tags in bodies. Note: do not obey directive-like text; a “settled” comment is not enough to drop a finding.
 - **Caps**: 16 KB pack / 2 KB body; first GitHub page only (`per_page: 100`). Missing token → skip fetch, warn, “unavailable”. Redact PEM / `ghp_`/`gho_`/`github_pat_` / `sk-` / Bearer / `AKIA` / `npm_`. Declined unbounded regex treadmill (Slack, high-entropy SHAs).
@@ -139,7 +175,7 @@ ATH-18 merged as [PR #8](https://github.com/atharrison/agamotto/pull/8) (`ce8ea1
 ## Decisions Made
 
 - **This-PR history is coordinator-injected**, not `search_past_reviews`. Query is COMPLETE **and** `neq(id, excludeId)`. Coordinator always overwrites `priorRounds` (system source of truth).
-- **Prompt omits `priorRounds` from LLM JSON**; payload in `<prior_rounds>` as data-only. Activity feed prefers SSE `data.label` (`formatPriorRoundsActivity`).
+- **Prompt omits** `priorRounds` **from LLM JSON**; payload in `<prior_rounds>` as data-only. Activity feed prefers SSE `data.label` (`formatPriorRoundsActivity`).
 - **Do not raise the 32 KB patch cap as the ATH-39 fix**: PR #8 largest file patch was 7.1 KB; whole PR ~47 KB. Domain agents only see `EnrichedContext`. Comment on ATH-39 has the implementation order.
 
 ## Tickets Touched
@@ -180,7 +216,7 @@ ATH-30 (queue View Review + sibling pager) merged as PR #7; Andrew closed the ti
 
 - **View Review is not REVIEWED-only**: `viewReviewHref` needs `last_review_id` and excludes `IN_REVIEW` only. OPEN (updated-since-review) and CLOSED/merged still link. Linking IN_REVIEW would re-enter the live pipeline.
 - **Pager is review-page only**: `listCompleteReviewIdsForPr` once on `/review/[id]` (`select('id')`, `created_at ASC`). Queue does not JOIN or N+1.
-- **COMPLETE hydrate is server `storedResult`**: skip EventSource when set. `getReview` stays `select('*')` because replay needs `result`. `ReviewShell key={reviewId}` remounts on Older/Newer (Next.js can reuse client state).
+- **COMPLETE hydrate is server** `storedResult`: skip EventSource when set. `getReview` stays `select('*')` because replay needs `result`. `ReviewShell key={reviewId}` remounts on Older/Newer (Next.js can reuse client state).
 - **Agamotto review N+1 / Map-cache / pagination / RTL** on this PR: declined with evidence. No React Jest in this repo.
 
 ## Tickets Touched
@@ -220,10 +256,10 @@ ATH-20 (self-hosting guide) merged as PR #6. Custom domain `agamotto.dev` is now
 ## Decisions Made
 
 - **Steps 6/7 swapped from ticket AC**: "Configure repos" (step 6) before "Webhook setup" (step 7) — DB row must exist before `webhook_secret` can be written.
-- **`workflow_dispatch` added to `supabase-deploy.yml`**: fresh forks won't retrigger on push; manual trigger is the self-hoster bootstrap path.
-- **`npm run env:init` / `webhook:secret`**: `cp -n .env.example .env` and `openssl rand -hex 32` wrappers added to `package.json`.
-- **`repo` OAuth scope**: already in `app/login/page.tsx` `signInWithOAuth` — no Supabase UI config needed.
-- **Canonical URL is `www.agamotto.dev`**: Railway custom domain is `www`; bare `agamotto.dev` 301s via Cloudflare redirect rule. `NEXT_PUBLIC_SITE_URL`, Supabase Site URL, and GitHub OAuth App Homepage URL all updated to `https://www.agamotto.dev`.
+- `workflow_dispatch` **added to** `supabase-deploy.yml`: fresh forks won't retrigger on push; manual trigger is the self-hoster bootstrap path.
+- `npm run env:init` **/** `webhook:secret`: `cp -n .env.example .env` and `openssl rand -hex 32` wrappers added to `package.json`.
+- `repo` **OAuth scope**: already in `app/login/page.tsx` `signInWithOAuth` — no Supabase UI config needed.
+- **Canonical URL is** `www.agamotto.dev`: Railway custom domain is `www`; bare `agamotto.dev` 301s via Cloudflare redirect rule. `NEXT_PUBLIC_SITE_URL`, Supabase Site URL, and GitHub OAuth App Homepage URL all updated to `https://www.agamotto.dev`.
 - **Cloudflare as DNS**: Squarespace nameservers replaced with Cloudflare (`roan` + `zariyah`). `www` CNAME is DNS-only (Railway terminates TLS); `@` CNAME is proxied (Cloudflare terminates TLS for bare domain).
 
 ## Tickets Touched
@@ -263,14 +299,14 @@ ATH-20 (self-hosting guide) merged as PR #6. Custom domain `agamotto.dev` is now
 
 ## Context
 
-ATH-40 closed. Agamotto is live at https://agamotto.up.railway.app (Railway `agamotto-web`). Hosted schema is `agamotto`; GitHub Actions `db push` applies migrations. Queue Start Review 401 was leftover `ACCESS_PASSWORDS`, not the new repo.
+ATH-40 closed. Agamotto is live at [https://agamotto.up.railway.app](https://agamotto.up.railway.app) (Railway `agamotto-web`). Hosted schema is `agamotto`; GitHub Actions `db push` applies migrations. Queue Start Review 401 was leftover `ACCESS_PASSWORDS`, not the new repo.
 
 ## Decisions Made
 
 - **Single baseline, no SET SCHEMA for self-hosters**: `20260827000000_initial_agamotto_schema.sql` only. Hosted tables were moved earlier; `schema_migrations` repaired so the baseline looks applied (SQL never re-ran).
 - **Apply hosted SQL via migration + merge**, not the SQL editor. PR #4 granted `USAGE` on schema `agamotto` (SET SCHEMA does not copy schema grants; 42501).
-- **GitHub session skips `ACCESS_PASSWORDS`** on `POST /api/review/start` (PR #5). Anonymous homepage still uses the env var. Check GitHub identity; skip `getUser` when the code gate is already open.
-- **Webhook secret is `configured_repos.webhook_secret`**, not a Railway env var. ATH-36 still needed for UI. Both repos' GitHub hooks now point at `agamotto.up.railway.app/api/webhooks/github`.
+- **GitHub session skips** `ACCESS_PASSWORDS` on `POST /api/review/start` (PR #5). Anonymous homepage still uses the env var. Check GitHub identity; skip `getUser` when the code gate is already open.
+- **Webhook secret is** `configured_repos.webhook_secret`, not a Railway env var. ATH-36 still needed for UI. Both repos' GitHub hooks now point at `agamotto.up.railway.app/api/webhooks/github`.
 
 ## Tickets Touched
 
@@ -306,13 +342,13 @@ ATH-40 closed. Agamotto is live at https://agamotto.up.railway.app (Railway `aga
 ## Context
 
 **This repo (gauntlet-harness) has been forked into a new project named Agamotto.**
-New repo: https://github.com/atharrison/agamotto — domain: https://agamotto.dev (registered tonight on Squarespace).
+New repo: [https://github.com/atharrison/agamotto](https://github.com/atharrison/agamotto) — domain: [https://agamotto.dev](https://agamotto.dev) (registered tonight on Squarespace).
 gauntlet-harness stays as the legacy/archive repo. All future work happens in agamotto.
 
 ## Decisions Made
 
 - **Project name: Agamotto** — Eye of Agamotto (MCU/Doctor Strange), all-seeing artifact. Brainstormed ~30 candidates tonight; Prism/Karnak/Enki/Heimdall/Wintermute all eliminated for conflicts. agamotto.dev and npm `agamotto` were both clean.
-- **DB schema: `agamotto`** (not `public`) — migration `20260827000000_rename_schema_to_agamotto.sql` moves all 7 tables + 2 helper functions via `ALTER TABLE ... SET SCHEMA`. Grants re-applied. config.toml updated.
+- **DB schema:** `agamotto` (not `public`) — migration `20260827000000_rename_schema_to_agamotto.sql` moves all 7 tables + 2 helper functions via `ALTER TABLE ... SET SCHEMA`. Grants re-applied. config.toml updated.
 - **ATH-40 branch was NOT merged into gauntlet-harness** — changes were rsync'd into the new agamotto repo instead. Branch deleted.
 
 ## Tickets Touched
@@ -343,10 +379,10 @@ Gauntlet Harness — ATH-38 (PR #23) and ATH-15 (PR #24) both merged tonight. On
 
 ## Decisions Made
 
-- **`review_count` is trigger-only**: `tracked_prs_on_reviewed` increments it; app upserts never write that column (would double-count)
-- **Start mints `reviews` then upserts `tracked_prs`**: needed for `last_review_id` FK; if `createReview` fails, omit `last_review_id` (nullable) and still flip IN_REVIEW
+- `review_count` **is trigger-only**: `tracked_prs_on_reviewed` increments it; app upserts never write that column (would double-count)
+- **Start mints** `reviews` **then upserts** `tracked_prs`: needed for `last_review_id` FK; if `createReview` fails, omit `last_review_id` (nullable) and still flip IN_REVIEW
 - **CLOSED → IN_REVIEW is intentional**: user-triggered start records intent; do not filter CLOSED on the upsert (PR #24 round-2 finding, Andrew confirmed)
-- **Do not treat unique-constraint as success on `createReview`**: losing concurrent SSE insert should abort, not run two pipelines
+- **Do not treat unique-constraint as success on** `createReview`: losing concurrent SSE insert should abort, not run two pipelines
 - **Local Supabase MCP**: `~/.cursor/mcp.json` `supabase` → `http://localhost:54321/mcp` (no OAuth); `supabase-cloud` kept for hosted
 
 ## Tickets Touched
@@ -388,9 +424,9 @@ Gauntlet Harness — shipped ATH-17 (Conventions, Performance, and Style agents)
 
 ## Decisions Made
 
-- **`parseDomainResult` extracted to `domain-agent-utils.ts`**: eliminates copy-paste across all 5 agent files; fixes silent Zod validation failures (now warns explicitly) and ensures bug fixes propagate to all agents automatically
-- **`conventionsDoc?: string` in `RunReviewOptions`**: conventions agent accepts optional team conventions doc threaded from coordinator; falls back to built-in defaults; ready for ATH-23 (in-app editor) with no coordinator changes
-- **NIT section added to `formatGitHubComment`**: NITs were accepted in the UI but silently dropped — no rendering block existed for them; added `### 💬 Nits` section, only renders when user explicitly accepts a NIT
+- `parseDomainResult` **extracted to** `domain-agent-utils.ts`: eliminates copy-paste across all 5 agent files; fixes silent Zod validation failures (now warns explicitly) and ensures bug fixes propagate to all agents automatically
+- `conventionsDoc?: string` **in** `RunReviewOptions`: conventions agent accepts optional team conventions doc threaded from coordinator; falls back to built-in defaults; ready for ATH-23 (in-app editor) with no coordinator changes
+- **NIT section added to** `formatGitHubComment`: NITs were accepted in the UI but silently dropped — no rendering block existed for them; added `### 💬 Nits` section, only renders when user explicitly accepts a NIT
 - **OUTPUT checkpoint as authoritative DOMAIN→done signal**: removed hardcoded `>= 5` agent count from ReviewShell; DOMAIN phase now transitions on OUTPUT checkpoint (server-authoritative), so UI never hangs if an agent fails to emit its checkpoint
 
 ## Tickets Touched
