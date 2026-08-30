@@ -124,7 +124,17 @@ function SubmitBannerView({
     <div
       className={`rounded-lg border px-4 py-2.5 text-sm font-medium ${BANNER_TONE_CLASS[banner.tone]}`}
     >
-      <p>{banner.message}</p>
+      <p>
+        {banner.message}
+        {banner.detail && (
+          <span
+            className="ml-1.5 cursor-help text-xs font-normal text-amber-500/80 underline decoration-dotted underline-offset-2"
+            title={banner.detail}
+          >
+            Details
+          </span>
+        )}
+      </p>
       {copyBody && (
         <button
           type="button"

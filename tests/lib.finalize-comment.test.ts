@@ -4,6 +4,7 @@
 
 import {
   FinalizeBannerTone,
+  GITHUB_POST_FAILED_MESSAGE,
   buildFinalizeBanner,
   commentMarkdownFromResult,
   githubPostFailedReason,
@@ -99,8 +100,8 @@ describe('buildFinalizeBanner', () => {
       })
     ).toEqual({
       tone: FinalizeBannerTone.WARNING,
-      message:
-        'Review saved, but posting to GitHub failed — GitHub session expired — sign in again. You can copy the comment manually.',
+      message: GITHUB_POST_FAILED_MESSAGE,
+      detail: 'GitHub session expired — sign in again',
       copyBody: '## Review\n',
     })
   })
@@ -117,8 +118,25 @@ describe('buildFinalizeBanner', () => {
       },
     })
     expect(banner.tone).toBe(FinalizeBannerTone.WARNING)
+    expect(banner.message).toBe(GITHUB_POST_FAILED_MESSAGE)
+    expect(banner.detail).toBe('GITHUB_TOKEN not configured')
     expect(banner.copyBody).toBe('LGTM!')
-    expect(banner.message).toMatch(/GITHUB_TOKEN not configured/)
+  })
+
+  it('puts HttpError text in detail, not the visible message', () => {
+    const banner = buildFinalizeBanner({
+      httpOk: true,
+      approve: false,
+      postComment: true,
+      comment: {
+        error:
+          'HttpError: Resource not accessible by personal access token - https://docs.github.com/rest/issues/comments#create-an-issue-comment',
+        body: '## Review\n',
+      },
+    })
+    expect(banner.message).toBe(GITHUB_POST_FAILED_MESSAGE)
+    expect(banner.message).not.toMatch(/HttpError|personal access token/)
+    expect(banner.detail).toMatch(/personal access token/)
   })
 
   it('shows the approval success copy and comment body after a post', () => {

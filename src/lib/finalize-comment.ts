@@ -8,7 +8,12 @@ export type FinalizeBanner = {
   tone: FinalizeBannerTone
   message: string
   copyBody?: string
+  /** Raw GitHub / skip reason — shown on hover, not in the banner body. */
+  detail?: string
 }
+
+export const GITHUB_POST_FAILED_MESSAGE =
+  'Review saved, but posting to GitHub failed. Copy the comment and paste it on the PR.'
 
 export function commentMarkdownFromResult(
   comment: unknown
@@ -55,7 +60,8 @@ export function buildFinalizeBanner(opts: {
   if (failReason) {
     return {
       tone: FinalizeBannerTone.WARNING,
-      message: `Review saved, but posting to GitHub failed — ${failReason}. You can copy the comment manually.`,
+      message: GITHUB_POST_FAILED_MESSAGE,
+      detail: failReason,
       copyBody,
     }
   }
