@@ -5,6 +5,8 @@ import {
 } from '../../src/lib/supabase/server'
 import AddPrForm from './AddPrForm'
 import QueueDisplay from './QueueDisplay'
+import { listCompleteReviewsForHistory } from '../../src/memory/review-store'
+import { reviewChipsRecord } from '../../src/lib/history-prs'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +28,9 @@ export default async function QueuePage() {
     .eq('active', true)
     .order('owner')
     .order('name')
+
+  const reviews = await listCompleteReviewsForHistory()
+  const reviewChips = reviewChipsRecord(reviews)
 
   return (
     <div className="space-y-8">
@@ -56,6 +61,7 @@ export default async function QueuePage() {
 
       <QueueDisplay
         initialPrs={prs ?? []}
+        reviewChips={reviewChips}
         userName={user?.user_metadata?.user_name}
       />
     </div>

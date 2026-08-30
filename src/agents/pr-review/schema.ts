@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { GithubCommentKind } from '../../lib/github-conversation'
 
 // ── Finding ───────────────────────────────────────────────────────────────────
 
@@ -63,7 +64,7 @@ export type PriorRound = z.infer<typeof PriorRoundSchema>
 // Compacted GitHub comments for this PR. Injected by the coordinator.
 
 export const GithubConversationItemSchema = z.object({
-  kind: z.enum(['INLINE', 'DISCUSSION', 'REVIEW_BODY']),
+  kind: z.nativeEnum(GithubCommentKind),
   id: z.number().int(),
   author: z.string().optional(),
   createdAt: z.string(),

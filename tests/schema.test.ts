@@ -6,6 +6,10 @@ import {
   PRReviewSchema,
   CheckpointRecordSchema,
 } from '../src/agents/pr-review/schema'
+import {
+  GithubCommentKind,
+  formatContextJsonForAgents,
+} from '../src/lib/github-conversation'
 
 // ── Finding ───────────────────────────────────────────────────────────────────
 
@@ -158,7 +162,7 @@ describe('EnrichedContextSchema', () => {
       githubConversation: {
         items: [
           {
-            kind: 'REVIEW_BODY',
+            kind: GithubCommentKind.REVIEW_BODY,
             id: 3,
             author: 'carol',
             createdAt: '2026-08-02T00:00:00Z',
@@ -169,6 +173,11 @@ describe('EnrichedContextSchema', () => {
       },
     })
     expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    // Next.js tsc: Zod string-literal kind was not assignable to GithubCommentKind.
+    expect(formatContextJsonForAgents(parsed.data)).toContain(
+      '<github_conversation>'
+    )
   })
 
   it('rejects githubConversation with an unknown kind', () => {

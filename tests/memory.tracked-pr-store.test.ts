@@ -10,13 +10,17 @@ jest.mock('../src/lib/supabase/server', () => ({
 
 import { parsePrUrl } from '../src/lib/queue'
 import { TrackedPrStatus } from '../src/lib/tracked-prs'
-import { markPrInReview, markPrReviewed } from '../src/memory/tracked-pr-store'
+import {
+  markPrInReview,
+  markPrReviewed,
+  listTrackedPrsByUrls,
+} from '../src/memory/tracked-pr-store'
 
 const parsed = parsePrUrl('https://github.com/acme/app/pull/7')!
 
 function makeChain(result: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {}
-  for (const m of ['upsert', 'update', 'eq']) {
+  for (const m of ['upsert', 'update', 'eq', 'select', 'in']) {
     chain[m] = jest.fn().mockReturnValue(chain)
   }
   chain.then = (resolve: (v: unknown) => unknown) =>
@@ -89,5 +93,54 @@ describe('markPrReviewed', () => {
     await expect(markPrReviewed(parsed, 'rev-2')).rejects.toThrow(
       'markPrReviewed failed: timeout'
     )
+  })
+})
+
+describe('listTrackedPrsByUrls', () => {
+  it('returns [] without querying when urls is empty', async () => {
+    await expect(listTrackedPrsByUrls([])).resolves.toEqual([])
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it('selects title, author, and status for the given urls', async () => {
+    const chain = makeChain({
+      data: [
+        {
+          pr_url: 'https://github.com/acme/app/pull/7',
+          pr_title: 'Fix',
+          pr_author: 'alice',
+          status: TrackedPrStatus.REVIEWED,
+        },
+      ],
+      error: null,
+    })
+    mockFrom.mockReturnValue(chain)
+    const rows = await listTrackedPrsByUrls([
+      'https://github.com/acme/app/pull/7',
+    ])
+    expect(rows).toHaveLength(1)
+    expect(mockFrom).toHaveBeenCalledWith('tracked_prs')
+    expect(chain.select).toHaveBeenCalledWith(
+      'pr_url, pr_title, pr_author, status, last_review_id'
+    )
+    expect(chain.in).toHaveBeenCalledWith('pr_url', [
+      'https://github.com/acme/app/pull/7',
+    ])
+  })
+
+  it('returns [] when the query has no rows', async () => {
+    mockFrom.mockReturnValue(makeChain({ data: null, error: null }))
+    await expect(
+      listTrackedPrsByUrls(['https://github.com/acme/app/pull/7'])
+    ).resolves.toEqual([])
+  })
+
+  it('throws when Supabase returns an error', async () => {
+    mockFrom.mockReturnValue(
+      makeChain({ data: null, error: { message: 'timeout' } })
+    )
+    await expect(
+      listTrackedPrsByUrls(['https://github.com/acme/app/pull/7'])
+    ).rejects.toThrow('listTrackedPrsByUrls failed: timeout')
   })
 })

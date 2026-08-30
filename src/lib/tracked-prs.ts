@@ -75,3 +75,16 @@ export function viewReviewHref(pr: {
   if (pr.status === TrackedPrStatus.IN_REVIEW) return null
   return `/review/${pr.last_review_id}`
 }
+
+/**
+ * Path to the in-flight review. Null unless status is IN_REVIEW with an id.
+ * Distinct from viewReviewHref so the running icon can open the live pipeline.
+ */
+export function inProgressReviewHref(pr: {
+  status: string
+  last_review_id?: string | null
+}): string | null {
+  if (pr.status !== TrackedPrStatus.IN_REVIEW) return null
+  if (!pr.last_review_id) return null
+  return `/review/${pr.last_review_id}`
+}

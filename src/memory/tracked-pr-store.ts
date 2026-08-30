@@ -8,6 +8,7 @@
 import { createSupabaseServiceRoleClient } from '../lib/supabase/server'
 import type { ParsedPrUrl } from '../lib/queue'
 import { buildInReviewUpsert, buildReviewedPatch } from '../lib/tracked-prs'
+import type { TrackedPrHistoryRow } from '../lib/history-prs'
 
 /** Upsert the queue row to IN_REVIEW and record last_review_id.
  *
@@ -38,4 +39,17 @@ export async function markPrReviewed(
     .eq('repo', parsed.repo)
     .eq('pr_number', parsed.pr_number)
   if (error) throw new Error(`markPrReviewed failed: ${error.message}`)
+}
+
+/** Queue metadata for history PR bars. Empty `urls` skips the query. */
+export async function listTrackedPrsByUrls(
+  urls: string[]
+): Promise<TrackedPrHistoryRow[]> {
+  if (urls.length === 0) return []
+  const { data, error } = await createSupabaseServiceRoleClient()
+    .from('tracked_prs')
+    .select('pr_url, pr_title, pr_author, status, last_review_id')
+    .in('pr_url', urls)
+  if (error) throw new Error(`listTrackedPrsByUrls failed: ${error.message}`)
+  return (data ?? []) as TrackedPrHistoryRow[]
 }

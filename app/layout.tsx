@@ -42,6 +42,12 @@ export default async function RootLayout({
                 Queue
               </Link>
               <Link
+                href="/history"
+                className="text-sm text-gray-400 transition-colors hover:text-gray-200"
+              >
+                History
+              </Link>
+              <Link
                 href="/"
                 className="text-sm text-gray-400 transition-colors hover:text-gray-200"
               >
