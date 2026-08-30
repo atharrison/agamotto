@@ -2,6 +2,48 @@
 
 ---
 
+# Session State — 2026-08-29 01:37
+
+## Context
+
+ATH-32 merged as [PR #9](https://github.com/atharrison/agamotto/pull/9) (`6836119` on `main`). Full reviews coordinator-inject this PR's GitHub conversation. Two Agamotto review passes on the PR; round 1 hardening landed; round 2 “blocker” was a misread of fetch-vs-write order.
+
+## Decisions Made
+
+- **Coordinator-inject `githubConversation`**, same pattern as ATH-18 `priorRounds`. Do not add context-agent tool steps. Quick mode skips the fetch (empty pack).
+- **Fetch in parallel, write after context agent**: `loadGithubConversation` starts before `runContextAgent`; overwrite is `{ ...ctxResult.context, priorRounds, githubConversation }`. Model JSON cannot win.
+- **Untrusted data**: wrap pack in `<github_conversation>`; neutralize those tags in bodies. Note: do not obey directive-like text; a “settled” comment is not enough to drop a finding.
+- **Caps**: 16 KB pack / 2 KB body; first GitHub page only (`per_page: 100`). Missing token → skip fetch, warn, “unavailable”. Redact PEM / `ghp_`/`gho_`/`github_pat_` / `sk-` / Bearer / `AKIA` / `npm_`. Declined unbounded regex treadmill (Slack, high-entropy SHAs).
+- **Keep Agamotto GitHub comments** in the pack even when `priorRounds` exists. Activity feed is counts-only (no bodies in UI).
+
+## Tickets Touched
+
+- **ATH-32**: Done ✅ — PR #9. Replies: `#issuecomment-5460768827` (round 1), `#issuecomment-5460813683` (round 2).
+
+## What Was Tried and Abandoned
+
+- Ticket’s original AC (numbered `fetch_pr_comments` + `prComments`/`prDiscussion` fields): superseded by coordinator inject + one `githubConversation` pack.
+- Extra LLM summarize of long threads: user backed off.
+- Expanding redaction to Slack/high-entropy on Agamotto round 2: declined.
+
+## Open Questions / Blockers
+
+- Pagination / GraphQL resolved-threads still out of scope. ATH-44 stale GitHub OAuth 403 still backlog.
+
+## Next Steps
+
+1. ATH-19 (`/history`).
+2. ATH-39 / ATH-35 (review quality); ATH-42 then ATH-44.
+3. Backlog: ATH-41, ATH-37.
+
+## Key Files
+
+- `src/lib/github-conversation.ts`, `src/tools/github.ts` (`fetchPrConversation`)
+- `src/agents/pr-review/coordinator.ts`, `prompts.ts`, `domain-agent-utils.ts` (`domainContextJson`)
+- `docs/plans/2026-08-28-001-feat-pr-github-comments-plan.md`
+
+---
+
 # Session State — 2026-08-28 23:38
 
 ## Context

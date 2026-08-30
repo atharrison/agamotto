@@ -19,8 +19,10 @@ import {
   getReview,
   listCompleteReviewIdsForPr,
   listCompleteReviewsForPr,
+  listCompleteReviewsForHistory,
   setReviewSubmission,
 } from '../src/memory/review-store'
+import { HISTORY_REVIEW_LIMIT } from '../src/lib/history-prs'
 import type { PRReview } from '../src/agents/pr-review/schema'
 
 const mockCreateClient = createClient as jest.Mock
@@ -255,6 +257,49 @@ describe('setReviewSubmission', () => {
     )
     await expect(setReviewSubmission('rev-1', {})).rejects.toThrow(
       'setReviewSubmission failed'
+    )
+  })
+})
+
+describe('listCompleteReviewsForHistory', () => {
+  it('returns COMPLETE rows newest-first capped at HISTORY_REVIEW_LIMIT', async () => {
+    const chain = makeChain({
+      data: [
+        {
+          id: 'rev-new',
+          pr_url: 'https://github.com/a/b/pull/1',
+          pr_metadata: {},
+          result: { blockingIssues: [] },
+          created_at: '2026-08-29T00:00:00Z',
+        },
+      ],
+      error: null,
+    })
+    mockCreateClient.mockReturnValue(chain)
+    const rows = await listCompleteReviewsForHistory()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].id).toBe('rev-new')
+    expect(chain.select).toHaveBeenCalledWith(
+      'id, pr_url, pr_metadata, result, created_at'
+    )
+    expect(chain.eq).toHaveBeenCalledWith('status', 'COMPLETE')
+    expect(chain.order).toHaveBeenCalledWith('created_at', {
+      ascending: false,
+    })
+    expect(chain.limit).toHaveBeenCalledWith(HISTORY_REVIEW_LIMIT)
+  })
+
+  it('returns [] when the query has no rows', async () => {
+    mockCreateClient.mockReturnValue(makeChain({ data: null, error: null }))
+    await expect(listCompleteReviewsForHistory()).resolves.toEqual([])
+  })
+
+  it('throws when Supabase returns an error', async () => {
+    mockCreateClient.mockReturnValue(
+      makeChain({ data: null, error: { message: 'DB error' } })
+    )
+    await expect(listCompleteReviewsForHistory()).rejects.toThrow(
+      'listCompleteReviewsForHistory failed'
     )
   })
 })

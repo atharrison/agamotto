@@ -1,10 +1,17 @@
 import Link from 'next/link'
 import { createSupabaseServerClient } from '../../../src/lib/supabase/server'
+import { settingsBackLink } from '../../../src/lib/settings-back'
 import ReposManager from './ReposManager'
 
 export const dynamic = 'force-dynamic'
 
-export default async function QueueSettingsPage() {
+interface Props {
+  searchParams: Promise<{ from?: string }>
+}
+
+export default async function QueueSettingsPage({ searchParams }: Props) {
+  const { from } = await searchParams
+  const back = settingsBackLink(from)
   const supabase = await createSupabaseServerClient()
   const { data: reposData } = await supabase
     .from('configured_repos')
@@ -16,10 +23,10 @@ export default async function QueueSettingsPage() {
     <div className="space-y-8">
       <div className="flex items-center gap-3">
         <Link
-          href="/queue"
+          href={back.href}
           className="text-sm text-gray-500 transition hover:text-gray-300"
         >
-          ← Queue
+          ← {back.label}
         </Link>
         <span className="text-gray-700">/</span>
         <h1 className="text-xl font-bold tracking-tight text-white">
@@ -33,7 +40,8 @@ export default async function QueueSettingsPage() {
         </h2>
         <p className="mb-4 text-sm text-gray-400">
           Repos registered for PR tracking. PRs are added automatically when a
-          webhook fires, or manually from the queue page.
+          webhook fires, or manually from the queue. History lists GitHub PRs
+          for these repos.
         </p>
         <ReposManager initialRepos={reposData ?? []} />
       </section>

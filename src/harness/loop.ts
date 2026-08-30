@@ -1,3 +1,4 @@
+import { harnessLimits } from '../lib/harness-limits'
 import { AlarmType, createAlarm, fireAlarm } from './alarms'
 import type {
   ModelClient,
@@ -36,8 +37,12 @@ export class TurnLimitError extends Error {
 }
 
 export class TokenBudgetError extends Error {
-  constructor(tokens: number, limit: number) {
-    super(`Token budget exceeded: ${tokens} > ${limit}`)
+  constructor(
+    public readonly tokensUsed: number,
+    public readonly maxTokens: number,
+    public readonly cost: number = 0
+  ) {
+    super(`Token budget exceeded: ${tokensUsed} > ${maxTokens}`)
     this.name = 'TokenBudgetError'
   }
 }
@@ -58,9 +63,10 @@ export async function run(
   dispatch: ToolDispatcher,
   config: LoopConfig = {}
 ): Promise<LoopResult> {
-  const maxTurns = config.maxTurns ?? 20
-  const maxTokens = config.maxTokens ?? 200_000
-  const timeoutMs = config.timeoutMs ?? 300_000
+  const limits = harnessLimits()
+  const maxTurns = config.maxTurns ?? limits.maxTurns
+  const maxTokens = config.maxTokens ?? limits.maxTokens
+  const timeoutMs = config.timeoutMs ?? limits.timeoutMs
   const { reviewId } = config
 
   const messages: Message[] = [{ role: 'user', content: userInput }]
@@ -92,7 +98,7 @@ export async function run(
         reviewId
       )
       fireAlarm(alarm)
-      throw new TokenBudgetError(tokensUsed, maxTokens)
+      throw new TokenBudgetError(tokensUsed, maxTokens, totalCost)
     }
 
     // Model errors propagate to the caller — the loop does not swallow them

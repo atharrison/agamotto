@@ -60,6 +60,7 @@ function makeSupabaseClient(
 
 const mockAnonClient: { current: MockSupabaseClient | null } = { current: null }
 const mockServiceClient: { current: MockChain | null } = { current: null }
+const mockHealStuck = jest.fn().mockResolvedValue(undefined)
 
 jest.mock('../src/lib/supabase/server', () => ({
   createSupabaseServerClient: jest
@@ -70,6 +71,10 @@ jest.mock('../src/lib/supabase/server', () => ({
   })),
   getGitHubToken: jest.fn().mockResolvedValue(null),
   GH_TOKEN_COOKIE: 'gh_provider_token',
+}))
+
+jest.mock('../src/memory/tracked-pr-store', () => ({
+  healStuckInReviewRows: (...args: unknown[]) => mockHealStuck(...args),
 }))
 
 // Ensure GITHUB_TOKEN is not set so the Octokit metadata fetch is always skipped
@@ -95,6 +100,8 @@ function makeRequest(
 describe('GET /api/queue', () => {
   beforeEach(() => {
     jest.resetModules()
+    mockHealStuck.mockReset()
+    mockHealStuck.mockResolvedValue(undefined)
   })
 
   it('returns 401 when not authenticated', async () => {
@@ -105,6 +112,7 @@ describe('GET /api/queue', () => {
     expect(res.status).toBe(401)
     const body = await res.json()
     expect(body.error).toBe('Unauthorized')
+    expect(mockHealStuck).not.toHaveBeenCalled()
   })
 
   it('returns 200 with prs array on success', async () => {
@@ -121,6 +129,7 @@ describe('GET /api/queue', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.prs).toEqual(fakePrs)
+    expect(mockHealStuck).toHaveBeenCalled()
   })
 
   it('returns 500 when the database query fails', async () => {

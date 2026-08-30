@@ -7,14 +7,25 @@ import {
   failReview,
   getReview,
 } from '../../../../src/memory/review-store'
+import { markPrReviewFailed } from '../../../../src/memory/tracked-pr-store'
 import { getGitHubToken } from '../../../../src/lib/supabase/server'
+import { parsePrUrl } from '../../../../src/lib/queue'
 import {
   ReviewStreamKind,
   resolveReviewStream,
 } from '../../../../src/lib/review-stream'
+import { encodeSseEvent, tryEnqueueSse } from '../../../../src/lib/sse'
+import { harnessLimits } from '../../../../src/lib/harness-limits'
+import {
+  pipelineFailureErrorMessage,
+  tokenBudgetErrorMessage,
+  tokenBudgetOverageFromError,
+  tokenBudgetOverageFromMessage,
+  tokenBudgetStats,
+} from '../../../../src/lib/review-run-stats'
 
-// Allow up to 5 minutes for the full multi-agent review pipeline
-export const maxDuration = 300
+// Wall-clock cap for the SSE route — same TIMEOUT_MS as the agent loop.
+export const maxDuration = Math.ceil(harnessLimits().timeoutMs / 1000)
 
 /**
  * GET /api/review/[id]?prUrl=<encoded>&mode=full|quick
@@ -44,8 +55,9 @@ export async function GET(
   const stream = new ReadableStream({
     async start(controller) {
       function send(event: string, data: unknown) {
-        controller.enqueue(
-          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+        tryEnqueueSse(
+          chunk => controller.enqueue(chunk),
+          encoder.encode(encodeSseEvent(event, data))
         )
       }
 
@@ -72,7 +84,19 @@ export async function GET(
       })
 
       if (decision.kind === ReviewStreamKind.ERROR) {
-        send('error', { error: decision.error })
+        if (existing?.status === 'ERROR') {
+          const parsed = parsePrUrl(existing.pr_url)
+          if (parsed) await markPrReviewFailed(parsed).catch(() => {})
+        }
+        const overage = tokenBudgetOverageFromMessage(
+          existing?.error_message ?? ''
+        )
+        if (overage) {
+          send('stats', tokenBudgetStats(overage))
+          send('error', { error: tokenBudgetErrorMessage(overage) })
+        } else {
+          send('error', { error: decision.error })
+        }
         send('done', { reviewId })
         controller.close()
         return
@@ -124,6 +148,7 @@ export async function GET(
         }
       }
 
+      const pipelineStarted = Date.now()
       try {
         // Prefer the OAuth provider token from the user's GitHub session;
         // falls back to GITHUB_TOKEN env var if not available.
@@ -142,9 +167,19 @@ export async function GET(
       } catch (err) {
         console.error(`[review/${reviewId}] runReview failed:`, err)
         await failReview(reviewId, String(err)).catch(() => {})
-        send('error', {
-          error: 'Review pipeline failed. Check server logs for details.',
-        })
+        const parsed = parsePrUrl(runPrUrl)
+        if (parsed) await markPrReviewFailed(parsed).catch(() => {})
+        const overage = tokenBudgetOverageFromError(err)
+        if (overage) {
+          send(
+            'stats',
+            tokenBudgetStats(overage, {
+              includeCost: true,
+              durationMs: Date.now() - pipelineStarted,
+            })
+          )
+        }
+        send('error', { error: pipelineFailureErrorMessage(err) })
         send('done', { reviewId })
       } finally {
         controller.close()

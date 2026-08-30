@@ -1,9 +1,18 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { TrackedPrStatus, viewReviewHref } from '../../src/lib/tracked-prs'
+import {
+  TrackedPrStatus,
+  inProgressReviewHref,
+} from '../../src/lib/tracked-prs'
+import {
+  reviewChipsForPrUrl,
+  type HistoryReviewChip,
+} from '../../src/lib/history-prs'
+import { withoutStaleClosed } from '../../src/lib/stale-closed'
+import { ReviewRunningLink } from '../components/ReviewRunningLink'
+import { ReviewRoundChips } from '../components/ReviewRoundChips'
 
 interface TrackedPr {
   id: string
@@ -18,6 +27,8 @@ interface TrackedPr {
   updated_since_review: boolean
   review_count: number
   last_review_id?: string | null
+  pr_closed_at?: string | null
+  updated_at?: string | null
   created_at: string
 }
 
@@ -91,8 +102,10 @@ const FILTER_TABS: { value: StatusFilter; label: string }[] = [
 
 export default function QueueDisplay({
   initialPrs,
+  reviewChips,
 }: {
   initialPrs: TrackedPr[]
+  reviewChips: Record<string, HistoryReviewChip[]>
   userName?: string
 }) {
   const router = useRouter()
@@ -100,6 +113,7 @@ export default function QueueDisplay({
   const [startingIds, setStartingIds] = useState<Set<string>>(new Set())
   const [startError, setStartError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
+  const inboxPrs = withoutStaleClosed(initialPrs)
 
   async function handleStartReview(pr: TrackedPr) {
     setStartingIds(prev => new Set(prev).add(pr.id))
@@ -155,8 +169,8 @@ export default function QueueDisplay({
 
   const filteredPrs =
     statusFilter === 'ALL'
-      ? initialPrs
-      : initialPrs.filter(pr => pr.status === statusFilter)
+      ? inboxPrs
+      : inboxPrs.filter(pr => pr.status === statusFilter)
 
   const groups = groupByRepo(filteredPrs)
 
@@ -165,8 +179,8 @@ export default function QueueDisplay({
       {FILTER_TABS.map(tab => {
         const count =
           tab.value === 'ALL'
-            ? initialPrs.length
-            : initialPrs.filter(p => p.status === tab.value).length
+            ? inboxPrs.length
+            : inboxPrs.filter(p => p.status === tab.value).length
         const active = statusFilter === tab.value
         return (
           <button
@@ -194,13 +208,13 @@ export default function QueueDisplay({
     </div>
   )
 
-  if (initialPrs.length === 0) {
+  if (inboxPrs.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-gray-800 py-16 text-center">
-        <p className="text-gray-500">No PRs tracked yet.</p>
+        <p className="text-gray-500">Inbox is empty.</p>
         <p className="mt-1 text-sm text-gray-600">
           Paste a GitHub PR URL above to add one, or configure webhooks in
-          Settings.
+          Settings. Closed PRs older than 24 hours live on History.
         </p>
       </div>
     )
@@ -242,12 +256,13 @@ export default function QueueDisplay({
               const isClosed = pr.status === TrackedPrStatus.CLOSED
               const isReviewed = pr.status === TrackedPrStatus.REVIEWED
               const isOpen = pr.status === TrackedPrStatus.OPEN
-              const reviewHref = viewReviewHref(pr)
+              const liveHref = inProgressReviewHref(pr)
+              const chips = reviewChipsForPrUrl(reviewChips, pr.pr_url)
 
               return (
                 <div
                   key={pr.id}
-                  className="flex flex-col gap-2 p-4 sm:flex-row sm:items-start sm:gap-4"
+                  className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:gap-4"
                 >
                   <div
                     className={`min-w-0 flex-1 ${isClosed ? 'opacity-50' : ''}`}
@@ -272,30 +287,23 @@ export default function QueueDisplay({
                           ⟳ Updated
                         </span>
                       )}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                      {pr.pr_author && <span>@{pr.pr_author}</span>}
+                      {pr.pr_opened_at && (
+                        <span>opened {formatDate(pr.pr_opened_at)}</span>
+                      )}
                       {pr.review_count > 0 && (
-                        <span className="text-xs text-gray-600">
+                        <span className="text-gray-600">
                           {pr.review_count} review
                           {pr.review_count !== 1 ? 's' : ''}
                         </span>
                       )}
                     </div>
-                    <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
-                      {pr.pr_author && <span>@{pr.pr_author}</span>}
-                      {pr.pr_opened_at && (
-                        <span>opened {formatDate(pr.pr_opened_at)}</span>
-                      )}
-                    </div>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-2">
-                    {reviewHref && (
-                      <Link
-                        href={reviewHref}
-                        className="rounded-md border border-gray-700 px-3 py-1.5 text-xs font-medium text-gray-300 transition hover:border-indigo-700 hover:text-indigo-300"
-                      >
-                        View Review
-                      </Link>
-                    )}
+                  <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto">
+                    <ReviewRoundChips reviews={chips} />
                     {(isOpen || pr.updated_since_review) && !isClosed && (
                       <button
                         onClick={() => handleStartReview(pr)}
@@ -318,7 +326,10 @@ export default function QueueDisplay({
                         {isStarting ? '…' : 'Re-review'}
                       </button>
                     )}
-                    {pr.status === TrackedPrStatus.IN_REVIEW && (
+                    {pr.status === TrackedPrStatus.IN_REVIEW && liveHref && (
+                      <ReviewRunningLink href={liveHref} />
+                    )}
+                    {pr.status === TrackedPrStatus.IN_REVIEW && !liveHref && (
                       <span className="rounded-md border border-yellow-800 px-3 py-1.5 text-xs font-medium text-yellow-400">
                         Reviewing…
                       </span>

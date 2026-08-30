@@ -13,6 +13,7 @@ const mockGetReview = jest.fn()
 const mockCreateReview = jest.fn()
 const mockCompleteReview = jest.fn()
 const mockFailReview = jest.fn()
+const mockMarkPrReviewFailed = jest.fn()
 const mockRunReview = jest.fn()
 const mockCreateReviewContext = jest.fn()
 const mockGetGitHubToken = jest.fn()
@@ -34,6 +35,10 @@ jest.mock('../src/harness/context', () => ({
 
 jest.mock('../src/lib/supabase/server', () => ({
   getGitHubToken: (...args: unknown[]) => mockGetGitHubToken(...args),
+}))
+
+jest.mock('../src/memory/tracked-pr-store', () => ({
+  markPrReviewFailed: (...args: unknown[]) => mockMarkPrReviewFailed(...args),
 }))
 
 const REVIEW_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
@@ -89,6 +94,7 @@ beforeEach(() => {
   mockCreateReview.mockResolvedValue(undefined)
   mockCompleteReview.mockResolvedValue(undefined)
   mockFailReview.mockResolvedValue(undefined)
+  mockMarkPrReviewFailed.mockResolvedValue(undefined)
   mockRunReview.mockResolvedValue(COMPLETE_RESULT)
   mockCreateReviewContext.mockReturnValue({})
   mockGetGitHubToken.mockResolvedValue(null)
@@ -138,8 +144,45 @@ describe('GET /api/review/[id] — ATH-30 stored replay', () => {
     const { text } = await getReviewStream('')
 
     expect(mockRunReview).not.toHaveBeenCalled()
+    expect(mockMarkPrReviewFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: 'acme',
+        repo: 'app',
+        pr_number: 42,
+      })
+    )
     expect(eventsOfType(text, 'error')).toEqual([
       { error: 'Review failed. Check server logs for details.' },
+    ])
+    expect(eventsOfType(text, 'stats')).toEqual([])
+  })
+
+  it('replays token-budget overage stats for a stored TokenBudgetError', async () => {
+    mockGetReview.mockResolvedValue({
+      id: REVIEW_ID,
+      pr_url: PR_URL,
+      status: 'ERROR',
+      result: null,
+      error_message: 'TokenBudgetError: Token budget exceeded: 167123 > 150000',
+    })
+
+    const { text } = await getReviewStream('')
+
+    expect(mockRunReview).not.toHaveBeenCalled()
+    expect(mockMarkPrReviewFailed).toHaveBeenCalled()
+    expect(eventsOfType(text, 'stats')).toEqual([
+      {
+        tokensUsed: 167123,
+        maxTokens: 150000,
+        findingsCount: 0,
+        phaseDurations: {},
+      },
+    ])
+    expect(eventsOfType(text, 'error')).toEqual([
+      {
+        error:
+          'Token budget exceeded: 167,123 used of 150,000 (over by 17,123).',
+      },
     ])
   })
 })
@@ -203,8 +246,51 @@ describe('GET /api/review/[id] — live pipeline', () => {
       REVIEW_ID,
       'Error: pipeline exploded'
     )
+    expect(mockMarkPrReviewFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: 'acme',
+        repo: 'app',
+        pr_number: 42,
+      })
+    )
     expect(eventsOfType(text, 'error')).toEqual([
       { error: 'Review pipeline failed. Check server logs for details.' },
+    ])
+    expect(eventsOfType(text, 'stats')).toEqual([])
+  })
+
+  it('emits token overage stats when runReview throws TokenBudgetError', async () => {
+    const { TokenBudgetError } = await import('../src/harness/loop')
+    mockGetReview.mockResolvedValue(null)
+    mockRunReview.mockRejectedValue(
+      new TokenBudgetError(167123, 150000, 1.23456)
+    )
+
+    const { text } = await getReviewStream(
+      `?prUrl=${encodeURIComponent(PR_URL)}`
+    )
+
+    expect(mockFailReview).toHaveBeenCalledWith(
+      REVIEW_ID,
+      'TokenBudgetError: Token budget exceeded: 167123 > 150000'
+    )
+    expect(mockMarkPrReviewFailed).toHaveBeenCalled()
+    const stats = eventsOfType(text, 'stats')
+    expect(stats).toHaveLength(1)
+    expect(stats[0]).toMatchObject({
+      tokensUsed: 167123,
+      maxTokens: 150000,
+      estimatedCostUsd: 1.2346,
+      findingsCount: 0,
+    })
+    expect(
+      (stats[0] as { durationMs?: number }).durationMs
+    ).toBeGreaterThanOrEqual(0)
+    expect(eventsOfType(text, 'error')).toEqual([
+      {
+        error:
+          'Token budget exceeded: 167,123 used of 150,000 (over by 17,123).',
+      },
     ])
   })
 

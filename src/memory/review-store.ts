@@ -14,6 +14,10 @@ import {
   MAX_PRIOR_ROUNDS,
   type CompleteReviewSource,
 } from '../lib/prior-rounds'
+import {
+  HISTORY_REVIEW_LIMIT,
+  type HistoryReviewSource,
+} from '../lib/history-prs'
 
 function createSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -147,6 +151,21 @@ export async function listCompleteReviewsForPr(
   if (error)
     throw new Error(`listCompleteReviewsForPr failed: ${error.message}`)
   return (data ?? []) as CompleteReviewSource[]
+}
+
+/** COMPLETE reviews for the history page, newest first. Capped at HISTORY_REVIEW_LIMIT. */
+export async function listCompleteReviewsForHistory(): Promise<
+  HistoryReviewSource[]
+> {
+  const { data, error } = await createSupabaseClient()
+    .from('reviews')
+    .select('id, pr_url, pr_metadata, result, created_at')
+    .eq('status', ReviewStatus.COMPLETE)
+    .order('created_at', { ascending: false })
+    .limit(HISTORY_REVIEW_LIMIT)
+  if (error)
+    throw new Error(`listCompleteReviewsForHistory failed: ${error.message}`)
+  return (data ?? []) as HistoryReviewSource[]
 }
 
 /** Persist the user's finalize submission against the review row. */

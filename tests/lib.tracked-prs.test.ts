@@ -3,7 +3,9 @@ import {
   TrackedPrStatus,
   buildInReviewUpsert,
   buildReviewedPatch,
+  buildReviewFailedPatch,
   viewReviewHref,
+  inProgressReviewHref,
 } from '../src/lib/tracked-prs'
 
 const parsed = parsePrUrl('https://github.com/acme/app/pull/42')!
@@ -62,6 +64,24 @@ describe('buildReviewedPatch', () => {
   })
 })
 
+describe('buildReviewFailedPatch', () => {
+  it('returns OPEN when there were no completed reviews', () => {
+    expect(buildReviewFailedPatch(0)).toEqual({ status: TrackedPrStatus.OPEN })
+  })
+
+  it('returns REVIEWED when a prior review completed', () => {
+    expect(buildReviewFailedPatch(2)).toEqual({
+      status: TrackedPrStatus.REVIEWED,
+    })
+  })
+
+  it('does not include review_count or last_review_id', () => {
+    const patch = buildReviewFailedPatch(1)
+    expect(patch).not.toHaveProperty('review_count')
+    expect(patch).not.toHaveProperty('last_review_id')
+  })
+})
+
 describe('viewReviewHref', () => {
   const reviewId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
 
@@ -105,6 +125,37 @@ describe('viewReviewHref', () => {
     expect(
       viewReviewHref({
         status: TrackedPrStatus.IN_REVIEW,
+        last_review_id: reviewId,
+      })
+    ).toBeNull()
+  })
+})
+
+describe('inProgressReviewHref', () => {
+  const reviewId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+
+  it('returns /review/{id} for IN_REVIEW with last_review_id', () => {
+    expect(
+      inProgressReviewHref({
+        status: TrackedPrStatus.IN_REVIEW,
+        last_review_id: reviewId,
+      })
+    ).toBe(`/review/${reviewId}`)
+  })
+
+  it('returns null when IN_REVIEW has no last_review_id', () => {
+    expect(
+      inProgressReviewHref({
+        status: TrackedPrStatus.IN_REVIEW,
+        last_review_id: null,
+      })
+    ).toBeNull()
+  })
+
+  it('returns null for REVIEWED (use viewReviewHref instead)', () => {
+    expect(
+      inProgressReviewHref({
+        status: TrackedPrStatus.REVIEWED,
         last_review_id: reviewId,
       })
     ).toBeNull()

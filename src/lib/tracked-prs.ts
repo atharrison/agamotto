@@ -60,6 +60,23 @@ export function buildReviewedPatch(reviewId: string): TrackedPrReviewedPatch {
   }
 }
 
+/** Queue patch when a live review fails. `review_count` is trigger-owned. */
+export interface TrackedPrReviewFailedPatch {
+  status: TrackedPrStatus.OPEN | TrackedPrStatus.REVIEWED
+}
+
+/**
+ * Status after a pipeline error. Prior COMPLETE reviews keep REVIEWED;
+ * a first-review failure returns to OPEN. Does not touch last_review_id.
+ */
+export function buildReviewFailedPatch(
+  reviewCount: number
+): TrackedPrReviewFailedPatch {
+  return {
+    status: reviewCount > 0 ? TrackedPrStatus.REVIEWED : TrackedPrStatus.OPEN,
+  }
+}
+
 /**
  * Path to the last completed review for a queue row.
  *
@@ -73,5 +90,18 @@ export function viewReviewHref(pr: {
 }): string | null {
   if (!pr.last_review_id) return null
   if (pr.status === TrackedPrStatus.IN_REVIEW) return null
+  return `/review/${pr.last_review_id}`
+}
+
+/**
+ * Path to the in-flight review. Null unless status is IN_REVIEW with an id.
+ * Distinct from viewReviewHref so the running icon can open the live pipeline.
+ */
+export function inProgressReviewHref(pr: {
+  status: string
+  last_review_id?: string | null
+}): string | null {
+  if (pr.status !== TrackedPrStatus.IN_REVIEW) return null
+  if (!pr.last_review_id) return null
   return `/review/${pr.last_review_id}`
 }

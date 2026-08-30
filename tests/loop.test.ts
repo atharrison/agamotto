@@ -1,4 +1,4 @@
-import { run, TurnLimitError, TokenBudgetError } from '../src/harness/loop'
+import { run, TurnLimitError } from '../src/harness/loop'
 import type {
   ModelClient,
   ModelReply,
@@ -104,7 +104,34 @@ describe('run — hard stops', () => {
         maxTurns: 10,
         maxTokens: 500,
       })
-    ).rejects.toThrow(TokenBudgetError)
+    ).rejects.toMatchObject({
+      name: 'TokenBudgetError',
+      tokensUsed: 800,
+      maxTokens: 500,
+      cost: 0.001,
+    })
+  })
+
+  it('uses MAX_TOKENS from env when config omits maxTokens', async () => {
+    const orig = process.env.MAX_TOKENS
+    process.env.MAX_TOKENS = '500'
+    try {
+      const toolCall: ToolCall = { id: 't1', name: 'x', args: {} }
+      const loopingModel: ModelClient = {
+        chat: jest.fn(async () =>
+          makeReply({
+            usage: { inputTokens: 400, outputTokens: 400 },
+            toolCalls: [toolCall],
+          })
+        ),
+      }
+      await expect(
+        run('go', loopingModel, [], noopDispatch, { maxTurns: 10 })
+      ).rejects.toMatchObject({ name: 'TokenBudgetError', maxTokens: 500 })
+    } finally {
+      if (orig === undefined) delete process.env.MAX_TOKENS
+      else process.env.MAX_TOKENS = orig
+    }
   })
 
   it('detects repeated tool calls and throws', async () => {
