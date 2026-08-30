@@ -10,6 +10,16 @@ const blocking = {
   confidence: 0.9,
 }
 
+const lowConfidence = {
+  id: 'b-low',
+  severity: 'BLOCKING' as const,
+  category: 'CORRECTNESS',
+  file: 'a.ts',
+  title: 'hedged blocker',
+  body: 'maybe not',
+  confidence: 0.65,
+}
+
 const nit = {
   id: 'n-1',
   severity: 'NIT' as const,
@@ -28,7 +38,7 @@ describe('storedReviewUiState', () => {
 
   it('hydrates findings, default decisions, and a completed pipeline', () => {
     const state = storedReviewUiState({
-      blockingIssues: [blocking],
+      blockingIssues: [blocking, lowConfidence],
       suggestions: [],
       nits: [nit],
     })
@@ -36,9 +46,10 @@ describe('storedReviewUiState', () => {
     expect(state).not.toBeNull()
     expect(state!.status).toBe('done')
     expect(state!.isCachedReview).toBe(true)
-    expect(state!.findings).toEqual([blocking, nit])
+    expect(state!.findings).toEqual([blocking, lowConfidence, nit])
     expect(state!.decisions).toEqual({
       'b-1': { findingId: 'b-1', accepted: true },
+      'b-low': { findingId: 'b-low', accepted: false },
       'n-1': { findingId: 'n-1', accepted: false },
     })
     expect(state!.phaseStatuses).toEqual({

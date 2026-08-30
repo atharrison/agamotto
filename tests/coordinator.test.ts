@@ -567,4 +567,66 @@ describe('runReview (coordinator)', () => {
       label: 'GitHub conversation unavailable',
     })
   })
+
+  it('downgrades an ATH-16-style hedged BLOCKING finding before emit', async () => {
+    mockModel.chat = jest.fn(async (messages, _tools, systemPrompt) => {
+      const content = String(messages[0]?.content ?? '')
+      if (content.includes('write the final review summary')) {
+        return makeModelReply(makeSummaryJson())
+      }
+      if (
+        typeof systemPrompt === 'string' &&
+        systemPrompt.includes('correctness review')
+      ) {
+        return makeModelReply(
+          JSON.stringify({
+            domain: 'CORRECTNESS',
+            findings: [
+              {
+                id: 'ath-16',
+                severity: 'BLOCKING',
+                category: 'CORRECTNESS',
+                file: 'app/api/webhooks/github/route.ts',
+                line: 40,
+                title: '204 for non-PR events returned after full auth',
+                body: 'The real issue is that the 204 for non-PR events is returned correctly only after full auth — this appears correct. No blocking issue here on re-examination.',
+                confidence: 0.85,
+              },
+            ],
+            confidence: 0.8,
+          })
+        )
+      }
+      return makeModelReply(makeEmptyDomainResult('SECURITY'))
+    })
+
+    const emit = jest.fn()
+    const review = await runReview({
+      reviewId: 'test-rev-13',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      mode: 'quick',
+      context: makeContext(),
+      emit,
+    })
+
+    expect(review.blockingIssues).toHaveLength(0)
+    expect(review.suggestions).toEqual([
+      expect.objectContaining({
+        id: 'ath-16',
+        severity: 'SUGGESTION',
+      }),
+    ])
+    expect(review.suggestions[0].body).toContain(
+      '*(severity auto-adjusted: rationale hedged)*'
+    )
+    expect(emit).toHaveBeenCalledWith(
+      'finding',
+      expect.objectContaining({
+        finding: expect.objectContaining({
+          id: 'ath-16',
+          severity: 'SUGGESTION',
+        }),
+      })
+    )
+  })
 })

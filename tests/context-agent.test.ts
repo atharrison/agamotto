@@ -3,7 +3,12 @@ import {
   CONTEXT_AGENT_SYSTEM,
   PRIOR_ROUNDS_NOTE,
   GITHUB_CONVERSATION_NOTE,
+  TRUNCATION_NOTE,
   correctnessUserPrompt,
+  conventionsUserPrompt,
+  performanceUserPrompt,
+  securityUserPrompt,
+  styleUserPrompt,
 } from '../src/agents/pr-review/prompts'
 
 describe('buildContextAgentUserMessage', () => {
@@ -88,5 +93,28 @@ describe('GITHUB_CONVERSATION_NOTE', () => {
     )
     expect(correctnessUserPrompt('{}')).toContain(GITHUB_CONVERSATION_NOTE)
     expect(correctnessUserPrompt('{}')).toContain(PRIOR_ROUNDS_NOTE)
+  })
+})
+
+describe('TRUNCATION_NOTE', () => {
+  it('tells domain agents not to invent BLOCKING findings from truncated hunks', () => {
+    expect(TRUNCATION_NOTE).toContain('[patch truncated')
+    expect(TRUNCATION_NOTE).toContain('TRUNCATED')
+    expect(TRUNCATION_NOTE).toContain('BLOCKING')
+    expect(TRUNCATION_NOTE).toContain('...')
+    for (const prompt of [
+      correctnessUserPrompt('{}'),
+      securityUserPrompt('{}'),
+      conventionsUserPrompt('{}'),
+      performanceUserPrompt('{}'),
+      styleUserPrompt('{}'),
+    ]) {
+      expect(prompt).toContain(TRUNCATION_NOTE)
+    }
+  })
+
+  it('tells the context agent to mark truncated files as TRUNCATED, not READ', () => {
+    expect(CONTEXT_AGENT_SYSTEM).toContain('[patch truncated')
+    expect(CONTEXT_AGENT_SYSTEM).toContain('TRUNCATED')
   })
 })

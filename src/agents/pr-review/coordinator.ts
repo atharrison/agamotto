@@ -9,6 +9,10 @@ import { runPerformanceAgent } from './performance-agent'
 import { runStyleAgent } from './style-agent'
 import { mergeResults, bucketFindings } from './merge'
 import { coordinatorSummaryPrompt } from './prompts'
+import {
+  applyFindingQualityFilters,
+  prepareFindingsForMerge,
+} from '../../lib/finding-quality'
 import { withSpan } from '../../harness/observability'
 import { listCompleteReviewsForPr } from '../../memory/review-store'
 import { fetchPrConversation } from '../../tools/github'
@@ -323,13 +327,18 @@ async function _runReview(
   phaseDurations.DOMAIN = Date.now() - domainStart
 
   // ── Phase 3: Merge ────────────────────────────────────────────────────────
-  const mergedFindings = mergeResults([
-    correctnessResult,
-    securityResult,
-    conventionsResult,
-    performanceResult,
-    styleResult,
-  ])
+  const mergedFindings = applyFindingQualityFilters(
+    mergeResults(
+      prepareFindingsForMerge([
+        correctnessResult,
+        securityResult,
+        conventionsResult,
+        performanceResult,
+        styleResult,
+      ])
+    ),
+    enrichedContext
+  )
   const { blockingIssues, suggestions, nits } = bucketFindings(mergedFindings)
 
   // Emit findings after merge so client IDs are stable and match the PRReview

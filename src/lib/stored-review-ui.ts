@@ -1,3 +1,5 @@
+import { defaultFindingAccepted } from './finding-quality'
+
 /**
  * Hydrate the review UI from a stored COMPLETE reviews.result.
  * Used when opening View Review so the page never looks like a live pipeline.
@@ -52,7 +54,7 @@ export function storedReviewUiState(
   for (const finding of findings) {
     decisions[finding.id] = {
       findingId: finding.id,
-      accepted: finding.severity !== 'NIT',
+      accepted: defaultFindingAccepted(finding),
     }
   }
 
