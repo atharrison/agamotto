@@ -15,7 +15,6 @@ import {
   resolveReviewStream,
 } from '../../../../src/lib/review-stream'
 import { encodeSseEvent, tryEnqueueSse } from '../../../../src/lib/sse'
-import { harnessLimits } from '../../../../src/lib/harness-limits'
 import {
   pipelineFailureErrorMessage,
   tokenBudgetErrorMessage,
@@ -24,8 +23,9 @@ import {
   tokenBudgetStats,
 } from '../../../../src/lib/review-run-stats'
 
-// Wall-clock cap for the SSE route — same TIMEOUT_MS as the agent loop.
-export const maxDuration = Math.ceil(harnessLimits().timeoutMs / 1000)
+// Must be a numeric literal — Next.js static analysis rejects CallExpressions.
+// Keep in sync with DEFAULT_TIMEOUT_MS / 1000 in src/lib/harness-limits.ts.
+export const maxDuration = 300
 
 /**
  * GET /api/review/[id]?prUrl=<encoded>&mode=full|quick

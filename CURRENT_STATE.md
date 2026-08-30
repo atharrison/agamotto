@@ -2,6 +2,92 @@
 
 ---
 
+# Session State — 2026-08-30 00:40
+
+## Context
+
+ATH-35/39 merged as [PR #12](https://github.com/atharrison/agamotto/pull/12). Filter is on `main`. ATH-43 plant PR [#11](https://github.com/atharrison/agamotto/pull/11) still open — do not merge with plants in. Branch is `main`. Andrew will PR `CURRENT_STATE.md` separately.
+
+## Decisions Made
+
+- **Stop iterating `finding-quality.ts` on #11** — tickets met on ATH-16/15/38 fixtures; plant PR rarely emits hedge/truncation sentences. Remaining noise is domain emission (ATH-48), not more regex.
+- **`FINDING_QUALITY_FILTER` default ON** if unset. R6–R8 valid without `.env`. Auto-adjusted notes prove the filter on PR #12, not on R6–R8.
+- **Never run destructive SQL** — output it; Andrew executes. Memory added.
+- **Keep #11 plants + `generated/control-reviews/`** as ATH-48 measuring stick. R8 (`29b9ba0b`) left in local DB on purpose.
+- **Prompt overlays, not filter round 2** — ATH-48 absorbs ATH-23 (conventions editor never wired). ATH-49 is confidence floor UI, design first (not a locked “slider”).
+
+## Tickets Touched
+
+- **ATH-35 / ATH-39**: Done ✅ — PR #12. Self-review COMMENT `#issuecomment-5466884923`; reply `#issuecomment-5466942725`.
+- **ATH-48**: Created — per-agent prompt overlays + next fidelity pass (Post-MVP).
+- **ATH-49**: Created — review-page confidence floor, design first.
+- **ATH-43**: Unchanged — plants stay; Option D after ATH-48 baseline.
+
+## What Was Tried and Abandoned
+
+- Dropping sub-0.7 findings in the lib — fights ATH-49; emit-and-don’t-drop.
+- Raising 32 KB / more hedge regexes after R6–R8 — declined.
+- Env-var “security audit trail” from PR #12 review — declined.
+
+## Open Questions / Blockers
+
+- After #11 merges: one-liner `defaultFindingAccepted` in ReviewShell (live SSE still checks non-NITs).
+- Queue stuck `IN_REVIEW` after COMPLETE unsubmitted — homepage paste workaround; no ticket.
+
+## Next Steps
+
+1. PR `CURRENT_STATE.md` only (this file).
+2. ATH-48 when ready; do not merge #11 with plants.
+3. ATH-42 / ATH-44 still backlog.
+
+## Key Files
+
+- `src/lib/finding-quality.ts`, `generated/ath-43-control-analysis.md`, `generated/blog-review-fidelity.md`, `generated/control-reviews/INDEX.md`
+
+---
+
+# Session State — 2026-08-29 21:17
+
+## Context
+
+ATH-19 (history page + error handling) shipped as [PR #10](https://github.com/atharrison/agamotto/pull/10), merged to `main`. This session was on the Sonnet side (prior turns were Grok). Session focused on post-merge review quality assessment + backlog filing. Branch is now `main`.
+
+## Decisions Made
+
+- **`healStuckInReviewRows` stays in hot path for now** — ATH-47 filed to move it out. Option 1 (call from `completeReview`/`failReview`) is the likely right long-term answer; deferred.
+- **Failed first review resets to OPEN, no error indicator** — acknowledged as acceptable low-priority behavior. ATH-46 tracks whether this needs UX treatment.
+- **24-item Agamotto review of PR #10: no action** — posted [comment on PR #10](https://github.com/atharrison/agamotto/pull/10#issuecomment-5466186879) explaining: most items were false positives from context gaps; scope mismatch; architecture already decided; ATH-46/ATH-47 cover the two real items. Next ticket is review quality (ATH-35/ATH-39).
+- **Token limits bumped to 500k** in `.env` (`MAX_TOKENS=500000`) — 200k was not enough for the large PR #10 diff. Env var wiring from this PR is what made this adjustable.
+
+## Tickets Touched
+
+- **ATH-19**: Done ✅ — PR #10 merged. Token budget wiring, error stats SSE, `healStuckInReviewRows`, test coverage.
+- **ATH-47**: Created — Improvement, Low, Backlog. Move `healStuckInReviewRows` out of page-render hot path.
+- **ATH-46**: Created (prior session/Grok) — Low, Backlog. Decide if failed-first-review showing "Open" is a bug.
+
+## What Was Tried and Abandoned
+
+- Nothing new this session — assessment + ticket filing only.
+
+## Open Questions / Blockers
+
+- None blocking. ATH-35 / ATH-39 are next.
+
+## Next Steps
+
+1. **New agent window** — ATH-35 and ATH-39 (review quality: false positives, truncated diffs, context improvements).
+2. ATH-42 (GitHub comment post failure surface + copy button) — still open.
+3. ATH-44 (stale GitHub OAuth 403) — backlog.
+
+## Key Files
+
+- `src/lib/harness-limits.ts`, `src/lib/review-run-stats.ts` — new this PR
+- `src/memory/tracked-pr-store.ts` (`healStuckInReviewRows`)
+- `app/api/review/[id]/route.ts` — token budget error SSE path
+- `app/review/[id]/ReviewShell.tsx` — token overage display
+
+---
+
 # Session State — 2026-08-29 01:37
 
 ## Context

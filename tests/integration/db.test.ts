@@ -1,7 +1,7 @@
 /**
  * Integration tests against a real Postgres database.
  *
- * Run with: TEST_POSTGRES_URL=postgresql://... npm test -- --testPathPattern=integration
+ * Run with: TEST_POSTGRES_URL=postgresql://... npm test -- --testPathPatterns=integration
  * In CI this URL is provided by the GitHub Actions postgres service.
  *
  * These tests apply the same schema our production migration creates, then

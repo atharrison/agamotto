@@ -20,8 +20,11 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function countFindings(inner: Record<string, unknown>): number {
   if (Array.isArray(inner.findings)) return inner.findings.length
-  const buckets = [inner.blockingIssues, inner.suggestions, inner.nits]
-  return buckets.reduce((n, b) => n + (Array.isArray(b) ? b.length : 0), 0)
+  let count = 0
+  for (const bucket of [inner.blockingIssues, inner.suggestions, inner.nits]) {
+    if (Array.isArray(bucket)) count += bucket.length
+  }
+  return count
 }
 
 /** Summary text and finding count for a review_history row. */
