@@ -12,11 +12,13 @@ import type {
   Finding,
 } from '../agents/pr-review/schema'
 
+/** Whether the post-merge finding quality filter is active. */
 export enum FindingQualityFilter {
   ON = 'ON',
   OFF = 'OFF',
 }
 
+/** Env var that toggles the filter. Only `OFF` (any case) disables it. */
 export const FINDING_QUALITY_FILTER_ENV = 'FINDING_QUALITY_FILTER'
 
 /** Prompt skip line and future slider default. Not a drop threshold. */
@@ -40,33 +42,44 @@ export function defaultFindingAccepted(finding: {
   return finding.confidence >= MIN_FINDING_CONFIDENCE
 }
 
+/** Appended when BLOCKING was downgraded because the rationale walked itself back. */
 export const HEDGE_NOTE = '*(severity auto-adjusted: rationale hedged)*'
+/** Appended when title and body disagree on a `field=true/false` assignment. */
 export const TITLE_BODY_NOTE =
   '*(title/body inconsistency — verify suggested fix before acting)*'
+/** Appended when the cited file was truncated in EnrichedContext. */
 export const TRUNCATED_FILE_NOTE =
   '*(severity auto-adjusted: cited file was truncated)*'
+/** Appended when the finding itself says it could not verify from incomplete context. */
 export const INCOMPLETE_CONTEXT_NOTE =
   '*(severity auto-adjusted: could not verify from incomplete context)*'
+/** Appended when a deletion claim quotes text that is still on a non-`-` patch line. */
 export const UNGROUNDED_NOTE =
   '*(severity auto-adjusted: cited text still present in the visible patch)*'
 
 const PATCH_TRUNCATED_MARKER = '[patch truncated'
 
+/** ATH-16 walk-backs: severity label vs “not actually blocking.” */
 const HEDGE_RE =
   /not a blocking issue|no blocking issue|not actually blocking|upon further examination|on re-examination|on reflection|more of a suggestion|lower priority than initially stated|may not be necessary/i
 
+/** Explicit retract — drop, do not downgrade. */
 const WITHDRAW_RE =
   /withdrawing this finding|omitting this finding|\bretracting\b/i
 
+/** Agent abstained because the hunk was incomplete. */
 const CANNOT_CONFIRM_RE =
   /cannot confirm|could not verify|truncated diff|incomplete view|because truncated|file is truncated|incomplete context/i
 
+/** ATH-38 class: treating unified-diff `...` as source that will not compile. */
 const PLACEHOLDER_RE =
   /literal `\.\.\.`|\.\.\.\s*placeholders?|elided with `\.\.\.`|fail to compile/i
 
+/** ATH-15 class: indent hunk read as a semantic deletion. */
 const DELETION_CLAIM_RE =
   /stripped|no longer includes|empty object|error key was|key was stripped/i
 
+/** Quoted snippets shorter than this are too generic to ground against the patch. */
 const MIN_GROUNDED_SNIPPET = 12
 
 /**
