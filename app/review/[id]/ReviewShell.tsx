@@ -12,6 +12,10 @@ import {
   formatGithubConversationActivityLabel,
   formatGithubConversationFetchFailed,
 } from '../../../src/lib/github-conversation'
+import {
+  formatTokenUsage,
+  type ReviewRunStatsPayload,
+} from '../../../src/lib/review-run-stats'
 
 interface Finding {
   id: string
@@ -139,15 +143,10 @@ export function ReviewShell({
   const [isCachedReview, setIsCachedReview] = useState(
     hydrated?.isCachedReview ?? false
   )
-  const [runStats, setRunStats] = useState<{
-    tokensUsed: number
-    estimatedCostUsd: number
-    durationMs: number
-    findingsCount: number
-    phaseDurations: Record<string, number>
-  } | null>(null)
+  const [runStats, setRunStats] = useState<ReviewRunStatsPayload | null>(null)
   const startTimeRef = useRef(Date.now())
   const domainDoneRef = useRef(0)
+  const streamFailedRef = useRef(false)
   const esRef = useRef<EventSource | null>(null)
   const activityListRef = useRef<HTMLDivElement | null>(null)
   const activitySeqRef = useRef(hydrated?.activity.length ?? 0)
@@ -182,6 +181,7 @@ export function ReviewShell({
     // entirely (do not open-then-close). Pager hops remount via key={reviewId}.
     if (storedResult) return
 
+    streamFailedRef.current = false
     const es = new EventSource(
       `/api/review/${reviewId}?prUrl=${encodeURIComponent(prUrl)}&mode=${mode}`
     )
@@ -272,10 +272,28 @@ export function ReviewShell({
       })
     })
 
+    es.addEventListener('error', e => {
+      const msg = (e as MessageEvent).data
+        ? JSON.parse((e as MessageEvent).data).error
+        : 'Unknown error'
+      streamFailedRef.current = true
+      addActivity({ type: 'alarm', text: `✗ Error: ${msg}` })
+      setStatus('error')
+      setPhaseStatuses(p => {
+        const next = { ...p }
+        for (const key of Object.keys(next) as Array<keyof typeof next>) {
+          if (next[key] === 'running') next[key] = 'error'
+        }
+        return next
+      })
+    })
+
     es.addEventListener('done', () => {
-      setStatus('done')
+      setStatus(streamFailedRef.current ? 'error' : 'done')
       setElapsed(Date.now() - startTimeRef.current)
-      addActivity({ type: 'phase', text: '🎉 Review complete' })
+      if (!streamFailedRef.current) {
+        addActivity({ type: 'phase', text: '🎉 Review complete' })
+      }
       es.close()
     })
 
@@ -288,16 +306,16 @@ export function ReviewShell({
       }
     })
 
-    es.addEventListener('error', e => {
-      const msg = (e as MessageEvent).data
-        ? JSON.parse((e as MessageEvent).data).error
-        : 'Unknown error'
-      addActivity({ type: 'alarm', text: `✗ Error: ${msg}` })
-      setStatus('error')
-    })
-
     es.onerror = () => {
+      streamFailedRef.current = true
       setStatus('error')
+      setPhaseStatuses(p => {
+        const next = { ...p }
+        for (const key of Object.keys(next) as Array<keyof typeof next>) {
+          if (next[key] === 'running') next[key] = 'error'
+        }
+        return next
+      })
       es.close()
     }
 
@@ -438,11 +456,17 @@ export function ReviewShell({
         </div>
 
         {/* Findings placeholder while running */}
-        {findings.length === 0 && status !== 'done' && (
+        {findings.length === 0 && status !== 'done' && status !== 'error' && (
           <div className="rounded-lg border border-gray-800 bg-gray-900 p-8 text-center text-sm text-gray-500">
             {status === 'connecting'
               ? 'Connecting to review stream…'
               : 'Agents are running — findings will appear here'}
+          </div>
+        )}
+
+        {findings.length === 0 && status === 'error' && (
+          <div className="rounded-lg border border-red-900 bg-red-950/30 p-8 text-center text-sm text-red-400">
+            Review failed. Check the activity log or server logs for details.
           </div>
         )}
 
@@ -643,11 +667,26 @@ export function ReviewShell({
             </div>
             {runStats && (
               <div className="mt-3 pt-3 border-t border-gray-800">
-                <p className="text-xs font-mono text-gray-500 tabular-nums">
-                  {runStats.tokensUsed.toLocaleString()} tokens
-                  {' · '}${runStats.estimatedCostUsd.toFixed(4)}
-                  {' · '}
-                  {formatElapsed(runStats.durationMs)}
+                <p
+                  className={`text-xs font-mono tabular-nums ${
+                    runStats.maxTokens != null &&
+                    runStats.tokensUsed > runStats.maxTokens
+                      ? 'text-red-400'
+                      : 'text-gray-500'
+                  }`}
+                >
+                  {formatTokenUsage(runStats.tokensUsed, runStats.maxTokens)}
+                  {runStats.estimatedCostUsd != null && (
+                    <>
+                      {' · '}${runStats.estimatedCostUsd.toFixed(4)}
+                    </>
+                  )}
+                  {runStats.durationMs != null && (
+                    <>
+                      {' · '}
+                      {formatElapsed(runStats.durationMs)}
+                    </>
+                  )}
                 </p>
                 <div className="mt-1.5 space-y-0.5">
                   {Object.entries(runStats.phaseDurations ?? {}).map(
@@ -660,7 +699,7 @@ export function ReviewShell({
                           <div
                             className="h-full bg-indigo-600 rounded-full"
                             style={{
-                              width: `${runStats.durationMs > 0 ? Math.min(100, (ms / runStats.durationMs) * 100) : 0}%`,
+                              width: `${runStats.durationMs != null && runStats.durationMs > 0 ? Math.min(100, (ms / runStats.durationMs) * 100) : 0}%`,
                             }}
                           />
                         </div>
@@ -786,7 +825,9 @@ function PhaseRow({
             ? 'text-gray-300'
             : status === 'running'
               ? 'text-white font-medium'
-              : 'text-gray-600'
+              : status === 'error'
+                ? 'text-red-400'
+                : 'text-gray-600'
         }`}
       >
         {label}
@@ -796,8 +837,8 @@ function PhaseRow({
           running
         </span>
       )}
-      {status === 'done' && (
-        <span className="ml-auto text-xs text-green-600">done</span>
+      {status === 'error' && (
+        <span className="ml-auto text-xs text-red-400">failed</span>
       )}
     </div>
   )

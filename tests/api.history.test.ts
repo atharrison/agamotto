@@ -29,6 +29,7 @@ jest.mock('../src/lib/supabase/server', () => ({
 
 const mockListReviews = jest.fn()
 const mockListTracked = jest.fn()
+const mockHealStuck = jest.fn()
 
 jest.mock('../src/memory/review-store', () => ({
   listCompleteReviewsForHistory: (...args: unknown[]) =>
@@ -37,6 +38,7 @@ jest.mock('../src/memory/review-store', () => ({
 
 jest.mock('../src/memory/tracked-pr-store', () => ({
   listTrackedPrsByUrls: (...args: unknown[]) => mockListTracked(...args),
+  healStuckInReviewRows: (...args: unknown[]) => mockHealStuck(...args),
 }))
 
 const MOCK_USER = { id: 'user-1', email: 'dev@example.com' }
@@ -50,6 +52,8 @@ describe('GET /api/history', () => {
     jest.resetModules()
     mockListReviews.mockReset()
     mockListTracked.mockReset()
+    mockHealStuck.mockReset()
+    mockHealStuck.mockResolvedValue(undefined)
   })
 
   it('returns 401 when not authenticated', async () => {
@@ -58,6 +62,7 @@ describe('GET /api/history', () => {
     const res = await GET(makeRequest('http://localhost/api/history'))
     expect(res.status).toBe(401)
     expect(await res.json()).toEqual({ error: 'Unauthorized' })
+    expect(mockHealStuck).not.toHaveBeenCalled()
   })
 
   it('returns grouped PRs, counts only, newest last-review first', async () => {
@@ -108,6 +113,7 @@ describe('GET /api/history', () => {
       nits: 0,
     })
     expect(JSON.stringify(body)).not.toContain('blockingIssues')
+    expect(mockHealStuck).toHaveBeenCalled()
     expect(mockListTracked).toHaveBeenCalledWith([
       'https://github.com/acme/api/pull/1',
     ])

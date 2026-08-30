@@ -18,6 +18,7 @@ import {
 } from '../../src/lib/history-filters'
 import { SettingsFrom } from '../../src/lib/settings-back'
 import { listCompleteReviewsForHistory } from '../../src/memory/review-store'
+import { healStuckInReviewRows } from '../../src/memory/tracked-pr-store'
 import HistoryDisplay from './HistoryDisplay'
 
 export const dynamic = 'force-dynamic'
@@ -29,6 +30,9 @@ export default async function HistoryPage() {
     reviewed: cookieStore.get(HistoryFilterCookie.REVIEWED)?.value,
   })
   const service = createSupabaseServiceRoleClient()
+  await healStuckInReviewRows().catch(err =>
+    console.error('[history] heal stuck IN_REVIEW:', err)
+  )
   const { data: configured } = await service
     .from('configured_repos')
     .select('owner, name')

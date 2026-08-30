@@ -6,6 +6,7 @@ import {
 import AddPrForm from './AddPrForm'
 import QueueDisplay from './QueueDisplay'
 import { listCompleteReviewsForHistory } from '../../src/memory/review-store'
+import { healStuckInReviewRows } from '../../src/memory/tracked-pr-store'
 import { reviewChipsRecord } from '../../src/lib/history-prs'
 
 export const dynamic = 'force-dynamic'
@@ -17,6 +18,9 @@ export default async function QueuePage() {
   } = await supabase.auth.getUser()
 
   const service = createSupabaseServiceRoleClient()
+  await healStuckInReviewRows().catch(err =>
+    console.error('[queue] heal stuck IN_REVIEW:', err)
+  )
   const { data: prs } = await service
     .from('tracked_prs')
     .select('*')

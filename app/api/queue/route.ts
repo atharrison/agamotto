@@ -5,6 +5,7 @@ import {
   getGitHubToken,
 } from '../../../src/lib/supabase/server'
 import { parsePrUrl } from '../../../src/lib/queue'
+import { healStuckInReviewRows } from '../../../src/memory/tracked-pr-store'
 
 /**
  * GET /api/queue
@@ -18,6 +19,10 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser()
   if (!user)
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  await healStuckInReviewRows().catch(err =>
+    console.error('[GET /api/queue] heal stuck IN_REVIEW:', err)
+  )
 
   const { searchParams } = new URL(request.url)
   const statusFilter = searchParams.get('status')

@@ -1,6 +1,7 @@
 import { run } from '../../harness/loop'
 import { toToolDefinitions } from '../../harness/tools'
 import type { ReviewContext } from '../../harness/context'
+import { harnessLimits } from '../../lib/harness-limits'
 import { EnrichedContextSchema, type EnrichedContext } from './schema'
 import { CONTEXT_AGENT_SYSTEM } from './prompts'
 import type { PriorRound } from '../../lib/prior-rounds'
@@ -81,15 +82,16 @@ export async function runContextAgent(
 
   const userMessage = buildContextAgentUserMessage(prUrl, priorRounds)
 
+  const { maxTurns, maxTokens, timeoutMs } = harnessLimits()
   const loopResult = await run(
     userMessage,
     deps.model,
     tools,
     wrappedDispatch,
     {
-      maxTurns: 15,
-      maxTokens: 150_000,
-      timeoutMs: 120_000,
+      maxTurns,
+      maxTokens,
+      timeoutMs,
       reviewId,
       systemPrompt: CONTEXT_AGENT_SYSTEM,
     }

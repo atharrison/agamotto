@@ -3,6 +3,7 @@ import {
   TrackedPrStatus,
   buildInReviewUpsert,
   buildReviewedPatch,
+  buildReviewFailedPatch,
   viewReviewHref,
   inProgressReviewHref,
 } from '../src/lib/tracked-prs'
@@ -60,6 +61,24 @@ describe('buildReviewedPatch', () => {
       last_review_id: 'rev-9',
     })
     expect(patch).not.toHaveProperty('review_count')
+  })
+})
+
+describe('buildReviewFailedPatch', () => {
+  it('returns OPEN when there were no completed reviews', () => {
+    expect(buildReviewFailedPatch(0)).toEqual({ status: TrackedPrStatus.OPEN })
+  })
+
+  it('returns REVIEWED when a prior review completed', () => {
+    expect(buildReviewFailedPatch(2)).toEqual({
+      status: TrackedPrStatus.REVIEWED,
+    })
+  })
+
+  it('does not include review_count or last_review_id', () => {
+    const patch = buildReviewFailedPatch(1)
+    expect(patch).not.toHaveProperty('review_count')
+    expect(patch).not.toHaveProperty('last_review_id')
   })
 })
 

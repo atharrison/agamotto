@@ -7,8 +7,14 @@
 
 import { createSupabaseServiceRoleClient } from '../lib/supabase/server'
 import type { ParsedPrUrl } from '../lib/queue'
-import { buildInReviewUpsert, buildReviewedPatch } from '../lib/tracked-prs'
+import {
+  TrackedPrStatus,
+  buildInReviewUpsert,
+  buildReviewedPatch,
+  buildReviewFailedPatch,
+} from '../lib/tracked-prs'
 import type { TrackedPrHistoryRow } from '../lib/history-prs'
+import { ReviewStatus } from './review-store'
 
 /** Upsert the queue row to IN_REVIEW and record last_review_id.
  *
@@ -39,6 +45,92 @@ export async function markPrReviewed(
     .eq('repo', parsed.repo)
     .eq('pr_number', parsed.pr_number)
   if (error) throw new Error(`markPrReviewed failed: ${error.message}`)
+}
+
+/**
+ * Clear IN_REVIEW after a pipeline error. REVIEWED if this PR already had a
+ * completed review; otherwise OPEN. No-op when the row is missing or not
+ * IN_REVIEW (e.g. a close webhook won).
+ */
+export async function markPrReviewFailed(parsed: ParsedPrUrl): Promise<void> {
+  const supabase = createSupabaseServiceRoleClient()
+  const { data, error: readError } = await supabase
+    .from('tracked_prs')
+    .select('review_count, status')
+    .eq('owner', parsed.owner)
+    .eq('repo', parsed.repo)
+    .eq('pr_number', parsed.pr_number)
+    .single()
+  if (readError) {
+    if (
+      typeof readError === 'object' &&
+      readError !== null &&
+      'code' in readError &&
+      readError.code === 'PGRST116'
+    ) {
+      return
+    }
+    throw new Error(`markPrReviewFailed failed: ${readError.message}`)
+  }
+  if (!data) return
+  if (data.status !== TrackedPrStatus.IN_REVIEW) return
+  const { error } = await supabase
+    .from('tracked_prs')
+    .update(buildReviewFailedPatch(data.review_count ?? 0))
+    .eq('owner', parsed.owner)
+    .eq('repo', parsed.repo)
+    .eq('pr_number', parsed.pr_number)
+    .eq('status', TrackedPrStatus.IN_REVIEW)
+  if (error) throw new Error(`markPrReviewFailed failed: ${error.message}`)
+}
+
+/** IN_REVIEW row that may be stuck after a failed pipeline. */
+interface StuckInReviewRow {
+  owner: string
+  repo: string
+  pr_number: number
+  last_review_id: string | null
+  review_count: number | null
+}
+
+/**
+ * Clear queue/history spinners when last_review_id already points at an
+ * ERROR review. Live IN_REVIEW + RUNNING rows are left alone.
+ */
+export async function healStuckInReviewRows(): Promise<void> {
+  const supabase = createSupabaseServiceRoleClient()
+  const { data, error: listError } = await supabase
+    .from('tracked_prs')
+    .select('owner, repo, pr_number, last_review_id, review_count')
+    .eq('status', TrackedPrStatus.IN_REVIEW)
+    .not('last_review_id', 'is', null)
+  if (listError) {
+    throw new Error(`healStuckInReviewRows failed: ${listError.message}`)
+  }
+  const stuck = (data ?? []) as StuckInReviewRow[]
+  const ids = stuck
+    .map(row => row.last_review_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  if (ids.length === 0) return
+
+  const { data: failed, error: revError } = await supabase
+    .from('reviews')
+    .select('id')
+    .in('id', ids)
+    .eq('status', ReviewStatus.ERROR)
+  if (revError) {
+    throw new Error(`healStuckInReviewRows failed: ${revError.message}`)
+  }
+  const failedIds = new Set((failed ?? []).map(row => row.id as string))
+  for (const row of stuck) {
+    if (!row.last_review_id || !failedIds.has(row.last_review_id)) continue
+    await markPrReviewFailed({
+      owner: row.owner,
+      repo: row.repo,
+      pr_number: row.pr_number,
+      canonical_url: `https://github.com/${row.owner}/${row.repo}/pull/${row.pr_number}`,
+    })
+  }
 }
 
 /** Queue metadata for history PR bars. Empty `urls` skips the query. */
