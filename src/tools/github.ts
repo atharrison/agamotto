@@ -159,7 +159,7 @@ const FIRST_PAGE = 100
 
 type GithubUserLike = { login?: string | null; type?: string | null } | null
 
-function authorLogin(user: GithubUserLike): string | undefined {
+function authorLogin(user: GithubUserLike | undefined): string | undefined {
   return user?.login ?? undefined
 }
 
