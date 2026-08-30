@@ -1,4 +1,8 @@
-import { mergeResults, bucketFindings } from '../src/agents/pr-review/merge'
+import {
+  bucketFindings,
+  extractIdentifiers,
+  mergeResults,
+} from '../src/agents/pr-review/merge'
 import type { DomainResult, Finding } from '../src/agents/pr-review/schema'
 
 function makeFinding(overrides: Partial<Finding> = {}): Finding {
@@ -56,7 +60,7 @@ describe('mergeResults', () => {
       makeResult('SECURITY', [b]),
     ])
     expect(results).toHaveLength(1)
-    // The winner keeps the higher-confidence id and promotes to BLOCKING
+    // Severity promotes to BLOCKING and confidence takes the strongest claim
     expect(results[0].severity).toBe('BLOCKING')
     expect(results[0].confidence).toBe(0.9)
   })
@@ -141,6 +145,369 @@ describe('mergeResults', () => {
     const sorted = mergeResults([makeResult('CORRECTNESS', [low, high])])
     expect(sorted).toHaveLength(2)
     expect(sorted[0].confidence).toBeGreaterThan(sorted[1].confidence)
+  })
+})
+
+describe('multi-attribution (ATH-50)', () => {
+  it('credits every agent that raised the defect', () => {
+    const a = makeFinding({
+      id: 'a',
+      file: 'src/foo.ts',
+      line: 10,
+      title: 'Missing null check',
+      category: 'CORRECTNESS',
+    })
+    const b = makeFinding({
+      id: 'b',
+      file: 'src/foo.ts',
+      line: 11,
+      title: 'Missing null check here',
+      category: 'SECURITY',
+    })
+    const [merged] = mergeResults([
+      makeResult('CORRECTNESS', [a]),
+      makeResult('SECURITY', [b]),
+    ])
+    expect(merged.categories).toEqual(['CORRECTNESS', 'SECURITY'])
+  })
+
+  it('gives solo findings a single-entry attribution list', () => {
+    const [solo] = mergeResults([
+      makeResult('STYLE', [makeFinding({ category: 'STYLE' })]),
+    ])
+    expect(solo.categories).toEqual(['STYLE'])
+  })
+
+  it('does not duplicate an agent that raised two paraphrases of one defect', () => {
+    const findings = [
+      makeFinding({
+        id: 'a',
+        file: 'src/foo.ts',
+        line: 10,
+        title: 'Null check missing',
+      }),
+      makeFinding({
+        id: 'b',
+        file: 'src/foo.ts',
+        line: 10,
+        title: 'Null check missing here',
+      }),
+    ]
+    const [merged] = mergeResults([makeResult('CORRECTNESS', findings)])
+    expect(merged.categories).toEqual(['CORRECTNESS'])
+  })
+
+  it('accumulates attribution across three agents', () => {
+    const at = (id: string, category: Finding['category']) =>
+      makeFinding({
+        id,
+        category,
+        file: 'src/foo.ts',
+        line: 10,
+        title: 'Leaked secret token',
+      })
+    const [merged] = mergeResults([
+      makeResult('STYLE', [at('a', 'STYLE')]),
+      makeResult('CORRECTNESS', [at('b', 'CORRECTNESS')]),
+      makeResult('SECURITY', [at('c', 'SECURITY')]),
+    ])
+    expect(merged.categories).toEqual(['STYLE', 'CORRECTNESS', 'SECURITY'])
+    expect(merged.category).toBe('SECURITY')
+  })
+})
+
+describe('domain precedence (ATH-50)', () => {
+  const pair = (
+    aCategory: Finding['category'],
+    bCategory: Finding['category'],
+    aConfidence = 0.95,
+    bConfidence = 0.7
+  ) =>
+    mergeResults([
+      makeResult(aCategory, [
+        makeFinding({
+          id: 'a',
+          category: aCategory,
+          confidence: aConfidence,
+          file: 'src/foo.ts',
+          line: 10,
+          title: 'Scan of a huge array',
+          body: 'from the first agent',
+        }),
+      ]),
+      makeResult(bCategory, [
+        makeFinding({
+          id: 'b',
+          category: bCategory,
+          confidence: bConfidence,
+          file: 'src/foo.ts',
+          line: 10,
+          title: 'Scan of a huge array again',
+          body: 'from the second agent',
+        }),
+      ]),
+    ])
+
+  it('lets the specialist write-up survive over a more confident catch-all', () => {
+    const [merged] = pair('CORRECTNESS', 'PERFORMANCE')
+    expect(merged.category).toBe('PERFORMANCE')
+    expect(merged.body).toBe('from the second agent')
+  })
+
+  it('keeps the strongest confidence even when the specialist was less sure', () => {
+    const [merged] = pair('CORRECTNESS', 'PERFORMANCE')
+    expect(merged.confidence).toBe(0.95)
+  })
+
+  it('ranks security above performance above conventions above correctness above style', () => {
+    expect(pair('PERFORMANCE', 'SECURITY')[0].category).toBe('SECURITY')
+    expect(pair('CONVENTIONS', 'PERFORMANCE')[0].category).toBe('PERFORMANCE')
+    expect(pair('CORRECTNESS', 'CONVENTIONS')[0].category).toBe('CONVENTIONS')
+    expect(pair('STYLE', 'CORRECTNESS')[0].category).toBe('CORRECTNESS')
+  })
+
+  it('falls back to confidence within a single domain', () => {
+    const [merged] = pair('STYLE', 'STYLE', 0.7, 0.95)
+    expect(merged.body).toBe('from the second agent')
+  })
+})
+
+describe('identifier-aware dedup (ATH-50)', () => {
+  // Titles taken from control run R7, where the same planted credential was
+  // reported five times because the paraphrases share few title words.
+  const tokenFinding = (
+    id: string,
+    category: Finding['category'],
+    line: number,
+    title: string
+  ) =>
+    makeFinding({
+      id,
+      category,
+      line,
+      file: 'src/lib/confidence-bar.ts',
+      title,
+      body: 'The constant DEBUG_GH_TOKEN is committed to source.',
+    })
+
+  it('collapses paraphrases of one defect that share a named symbol', () => {
+    const merged = mergeResults([
+      makeResult('CORRECTNESS', [
+        tokenFinding(
+          'a',
+          'CORRECTNESS',
+          19,
+          'Hardcoded credential (DEBUG_GH_TOKEN) exported and sent over the network'
+        ),
+      ]),
+      makeResult('STYLE', [
+        tokenFinding(
+          'b',
+          'STYLE',
+          20,
+          'DEBUG_GH_TOKEN is a hard-coded secret exported from a library module'
+        ),
+      ]),
+    ])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].categories).toEqual(['CORRECTNESS', 'STYLE'])
+  })
+
+  it('keeps distinct defects on adjacent lines apart even when they name the same symbol', () => {
+    // The credential leak and the fetch-per-render are the same useEffect, but
+    // they are two defects — collapsing them would silently drop one.
+    const leak = makeFinding({
+      id: 'a',
+      category: 'SECURITY',
+      file: 'app/components/ConfidenceBar.tsx',
+      line: 44,
+      title: 'Credential leaked to browser network via client-side fetch',
+      body: 'DEBUG_GH_TOKEN is sent as a Bearer header from useEffect.',
+    })
+    const perRender = makeFinding({
+      id: 'b',
+      category: 'STYLE',
+      file: 'app/components/ConfidenceBar.tsx',
+      line: 43,
+      title: 'useEffect fires a debug health-ping on every render',
+      body: 'An unexplained side-effect using DEBUG_GH_TOKEN in a display component.',
+    })
+    expect(
+      mergeResults([
+        makeResult('SECURITY', [leak]),
+        makeResult('STYLE', [perRender]),
+      ])
+    ).toHaveLength(2)
+  })
+
+  it('still requires the same file when a symbol is shared', () => {
+    const declaration = tokenFinding(
+      'a',
+      'SECURITY',
+      19,
+      'DEBUG_GH_TOKEN hardcoded in the library'
+    )
+    const usage = makeFinding({
+      id: 'b',
+      category: 'CORRECTNESS',
+      file: 'app/components/ConfidenceBar.tsx',
+      line: 19,
+      title: 'DEBUG_GH_TOKEN hardcoded in the component',
+      body: 'Same symbol, different file.',
+    })
+    expect(
+      mergeResults([
+        makeResult('SECURITY', [declaration]),
+        makeResult('CORRECTNESS', [usage]),
+      ])
+    ).toHaveLength(2)
+  })
+
+  it('still requires nearby lines when a symbol is shared', () => {
+    const near = tokenFinding(
+      'a',
+      'SECURITY',
+      19,
+      'DEBUG_GH_TOKEN hardcoded in the library'
+    )
+    const far = tokenFinding(
+      'b',
+      'STYLE',
+      200,
+      'DEBUG_GH_TOKEN referenced far below'
+    )
+    expect(
+      mergeResults([makeResult('SECURITY', [near]), makeResult('STYLE', [far])])
+    ).toHaveLength(2)
+  })
+})
+
+describe('duplicate edge cases', () => {
+  it('merges two file-level findings that carry no line number', () => {
+    const fileLevel = (id: string, category: Finding['category']) => {
+      const f = makeFinding({
+        id,
+        category,
+        file: 'src/foo.ts',
+        title: 'Module lacks tests',
+      })
+      delete (f as Partial<Finding>).line
+      return f
+    }
+    expect(
+      mergeResults([
+        makeResult('STYLE', [fileLevel('a', 'STYLE')]),
+        makeResult('CONVENTIONS', [fileLevel('b', 'CONVENTIONS')]),
+      ])
+    ).toHaveLength(1)
+  })
+
+  it('does not merge a file-level finding with a line-anchored one on title alone', () => {
+    const fileLevel = makeFinding({
+      id: 'a',
+      file: 'src/foo.ts',
+      title: 'Module lacks tests',
+    })
+    delete (fileLevel as Partial<Finding>).line
+    const anchored = makeFinding({
+      id: 'b',
+      file: 'src/foo.ts',
+      line: 400,
+      title: 'Something entirely different',
+    })
+    expect(
+      mergeResults([
+        makeResult('STYLE', [fileLevel]),
+        makeResult('CONVENTIONS', [anchored]),
+      ])
+    ).toHaveLength(2)
+  })
+
+  it('treats an empty title as no overlap rather than a perfect match', () => {
+    expect(
+      mergeResults([
+        makeResult('STYLE', [
+          makeFinding({ id: 'a', file: 'src/foo.ts', line: 10, title: '' }),
+        ]),
+        makeResult('CONVENTIONS', [
+          makeFinding({ id: 'b', file: 'src/foo.ts', line: 10, title: '' }),
+        ]),
+      ])
+    ).toHaveLength(2)
+  })
+
+  it('matches a third paraphrase on a symbol the second one contributed', () => {
+    // `c` names no symbol from `a`, only one `b` introduced. Its title overlap
+    // with the surviving finding clears the relaxed bar but not the strict one,
+    // so it merges only because the winner accumulated `b`'s identifiers.
+    const findings = [
+      makeFinding({
+        id: 'a',
+        category: 'SECURITY',
+        file: 'src/foo.ts',
+        line: 10,
+        title: 'Hardcoded DEBUG_GH_TOKEN in source',
+      }),
+      makeFinding({
+        id: 'b',
+        category: 'STYLE',
+        file: 'src/foo.ts',
+        line: 10,
+        title: 'DEBUG_GH_TOKEN should come from readGithubToken',
+      }),
+      makeFinding({
+        id: 'c',
+        category: 'CONVENTIONS',
+        file: 'src/foo.ts',
+        line: 11,
+        title: 'Hardcoded token from readGithubToken instead',
+      }),
+    ]
+    const merged = mergeResults([makeResult('SECURITY', findings)])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].categories).toEqual(['SECURITY', 'STYLE', 'CONVENTIONS'])
+  })
+})
+
+describe('extractIdentifiers', () => {
+  it('picks up CONSTANT_CASE and camelCase symbols', () => {
+    const ids = extractIdentifiers(
+      makeFinding({
+        title: 'DEBUG_GH_TOKEN leaks',
+        body: 'getConfidenceTier allocates',
+      })
+    )
+    expect(ids.has('DEBUG_GH_TOKEN')).toBe(true)
+    expect(ids.has('getConfidenceTier')).toBe(true)
+  })
+
+  it('ignores PascalCase, which is mostly component and type names', () => {
+    const ids = extractIdentifiers(
+      makeFinding({
+        title: 'ConfidenceBar renders wrong',
+        body: 'See PRReview.',
+      })
+    )
+    expect(ids.has('ConfidenceBar')).toBe(false)
+    expect(ids.has('PRReview')).toBe(false)
+  })
+
+  it('ignores ordinary prose words', () => {
+    const ids = extractIdentifiers(
+      makeFinding({ title: 'the loop is wrong', body: 'off by one error' })
+    )
+    expect(ids.size).toBe(0)
+  })
+
+  it('reads the suggestedFix as well as the title and body', () => {
+    const ids = extractIdentifiers(
+      makeFinding({
+        title: 'plain',
+        body: 'prose',
+        suggestedFix: 'call useMemo instead',
+      })
+    )
+    expect(ids.has('useMemo')).toBe(true)
   })
 })
 

@@ -7,6 +7,7 @@ import {
   formatApprovalComment,
   formatGitHubComment,
 } from '../agents/pr-review/approval'
+import { FINDING_CATEGORIES } from '../agents/pr-review/schema'
 import type {
   Finding,
   FindingDecision,
@@ -14,18 +15,15 @@ import type {
   ReviewSubmission,
 } from '../agents/pr-review/schema'
 
-const FINDING_CATEGORIES: ReadonlySet<Finding['category']> = new Set([
-  'STYLE',
-  'CONVENTIONS',
-  'CORRECTNESS',
-  'SECURITY',
-  'PERFORMANCE',
-])
+const KNOWN_CATEGORIES: ReadonlySet<Finding['category']> = new Set(
+  FINDING_CATEGORIES
+)
 
 export type UiFinding = {
   id: string
   severity: Finding['severity']
   category: string
+  categories?: string[]
   file: string
   line?: number
   title: string
@@ -71,7 +69,7 @@ export function finalizeDecisionsFromUi(
 }
 
 function asFindingCategory(value: string): Finding['category'] {
-  return FINDING_CATEGORIES.has(value as Finding['category'])
+  return KNOWN_CATEGORIES.has(value as Finding['category'])
     ? (value as Finding['category'])
     : 'CORRECTNESS'
 }
@@ -81,6 +79,7 @@ function toFinding(f: UiFinding): Finding {
     id: f.id,
     severity: f.severity,
     category: asFindingCategory(f.category),
+    categories: f.categories?.map(asFindingCategory),
     file: f.file,
     line: f.line,
     title: f.title,

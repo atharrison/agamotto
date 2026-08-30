@@ -25,11 +25,14 @@ import {
   finalizeDecisionsFromUi,
   formatReviewCommentFromUi,
 } from '../../../src/lib/review-comment-copy'
+import { findingCategories } from '../../../src/agents/pr-review/schema'
 
 interface Finding {
   id: string
   severity: 'BLOCKING' | 'SUGGESTION' | 'NIT'
   category: string
+  /** Absent on reviews stored before multi-attribution (ATH-50). */
+  categories?: string[]
   file: string
   line?: number
   title: string
@@ -584,7 +587,17 @@ export function ReviewShell({
                       {f.file}
                       {f.line ? `:${f.line}` : ''}
                     </span>
-                    <span className="text-xs text-gray-500">{f.category}</span>
+                    <span className="text-xs text-gray-500">
+                      {findingCategories(f).join(' · ')}
+                    </span>
+                    {findingCategories(f).length > 1 && (
+                      <span
+                        className="text-xs text-indigo-400"
+                        title="Independently raised by more than one agent"
+                      >
+                        {findingCategories(f).length} agents agree
+                      </span>
+                    )}
                     <span className="text-xs text-gray-600">
                       {Math.round(f.confidence * 100)}% confidence
                     </span>

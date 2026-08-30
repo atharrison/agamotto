@@ -7,6 +7,11 @@ import {
   classifyGithubCommentSource,
   type RawGithubComment,
 } from '../lib/github-conversation'
+import {
+  FILE_PATCH_MAX_BYTES,
+  truncatePatch,
+  type RawPrFile,
+} from '../lib/ground-truth-diff'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -36,7 +41,7 @@ const PostReviewCommentSchema = z.object({
 })
 
 /** Per-file patch cap for fetch_pr_files. ATH-28 raised 8 KB → 32 KB. */
-export const FILE_CONTENT_MAX_BYTES = 32 * 1024
+export const FILE_CONTENT_MAX_BYTES = FILE_PATCH_MAX_BYTES
 
 // ── Tool factory ──────────────────────────────────────────────────────────────
 
@@ -51,17 +56,13 @@ export function createGithubTools(
       description:
         'Fetch the unified diff for a pull request. Returns the raw patch text.',
       schema: FetchPrDiffSchema,
-      fn: async ({ owner, repo, pull_number }) => {
-        const { data } = await octokit.pulls.get({
+      fn: async ({ owner, repo, pull_number }) => ({
+        diff: await fetchPrDiff(octokit, {
           owner,
           repo,
-          pull_number,
-          mediaType: { format: 'diff' },
-        })
-        // Octokit returns the raw diff as a string for the 'diff' media type,
-        // but the TS types don't model custom media overrides — cast is intentional.
-        return { diff: data as unknown as string }
-      },
+          pr_number: pull_number,
+        }),
+      }),
     },
 
     fetch_pr_comments: {
@@ -89,24 +90,14 @@ export function createGithubTools(
       description: `Fetch the list of files changed in a pull request, with their patch and content (truncated to ${FILE_CONTENT_MAX_BYTES / 1024} KB per file).`,
       schema: FetchPrFilesSchema,
       fn: async ({ owner, repo, pull_number }) => {
-        const { data } = await octokit.pulls.listFiles({
+        const files = await fetchPrFiles(octokit, {
           owner,
           repo,
-          pull_number,
-          per_page: 100, // MVP: no pagination; GitHub caps at 300 files total
+          pr_number: pull_number,
         })
-        return data.map(f => ({
-          filename: f.filename,
-          status: f.status,
-          additions: f.additions,
-          deletions: f.deletions,
-          patch: f.patch
-            ? f.patch.length > FILE_CONTENT_MAX_BYTES
-              ? f.patch.slice(0, FILE_CONTENT_MAX_BYTES) +
-                `\n// [patch truncated — ${f.patch.length - FILE_CONTENT_MAX_BYTES} bytes omitted]`
-              : f.patch
-            : undefined,
-          blobUrl: f.blob_url,
+        return files.map(f => ({
+          ...f,
+          patch: f.patch ? truncatePatch(f.patch).text : undefined,
         }))
       },
     },
@@ -153,9 +144,51 @@ export function createOctokit(token?: string | null): Octokit | null {
   return new Octokit({ auth })
 }
 
-// ── Coordinator conversation fetch ────────────────────────────────────────────
+// ── Coordinator fetches ───────────────────────────────────────────────────────
+// Plain functions so the coordinator can establish ground truth itself instead
+// of trusting whatever the context agent transcribed into its JSON.
 
 const FIRST_PAGE = 100
+
+/** Just the coordinates — these fetches do not need the canonical URL. */
+type PrRef = Pick<ParsedPrUrl, 'owner' | 'repo' | 'pr_number'>
+
+/** The raw unified diff for a PR. */
+export async function fetchPrDiff(
+  octokit: Octokit,
+  parsed: PrRef
+): Promise<string> {
+  const { data } = await octokit.pulls.get({
+    owner: parsed.owner,
+    repo: parsed.repo,
+    pull_number: parsed.pr_number,
+    mediaType: { format: 'diff' },
+  })
+  // Octokit returns the raw diff as a string for the 'diff' media type, but the
+  // TS types don't model custom media overrides — cast is intentional.
+  return data as unknown as string
+}
+
+/** Changed files with their untruncated patches. */
+export async function fetchPrFiles(
+  octokit: Octokit,
+  parsed: PrRef
+): Promise<RawPrFile[]> {
+  const { data } = await octokit.pulls.listFiles({
+    owner: parsed.owner,
+    repo: parsed.repo,
+    pull_number: parsed.pr_number,
+    per_page: FIRST_PAGE, // MVP: no pagination; GitHub caps at 300 files total
+  })
+  return data.map(f => ({
+    filename: f.filename,
+    status: f.status,
+    additions: f.additions,
+    deletions: f.deletions,
+    patch: f.patch,
+    blobUrl: f.blob_url,
+  }))
+}
 
 type GithubUserLike = { login?: string | null; type?: string | null } | null
 

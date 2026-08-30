@@ -10,6 +10,8 @@ export interface StoredFinding {
   id: string
   severity: 'BLOCKING' | 'SUGGESTION' | 'NIT'
   category: string
+  /** Absent on reviews stored before multi-attribution (ATH-50). */
+  categories?: string[]
   file: string
   line?: number
   title: string

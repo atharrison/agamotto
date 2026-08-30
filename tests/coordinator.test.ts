@@ -6,7 +6,7 @@ import { InMemoryCheckpointStore } from '../src/harness/checkpoints'
 import type { ToolRegistry } from '../src/harness/tools'
 import { dispatch } from '../src/harness/tools'
 import { listCompleteReviewsForPr } from '../src/memory/review-store'
-import { fetchPrConversation } from '../src/tools/github'
+import { fetchPrConversation, fetchPrFiles } from '../src/tools/github'
 import { runContextAgent } from '../src/agents/pr-review/context-agent'
 import {
   GithubCommentKind,
@@ -19,6 +19,7 @@ jest.mock('../src/memory/review-store', () => ({
 
 jest.mock('../src/tools/github', () => ({
   fetchPrConversation: jest.fn().mockResolvedValue({ items: [] }),
+  fetchPrFiles: jest.fn().mockResolvedValue([]),
 }))
 
 jest.mock('../src/agents/pr-review/context-agent', () => ({
@@ -32,6 +33,10 @@ const mockListCompleteReviewsForPr =
 
 const mockFetchPrConversation = fetchPrConversation as jest.MockedFunction<
   typeof fetchPrConversation
+>
+
+const mockFetchPrFiles = fetchPrFiles as jest.MockedFunction<
+  typeof fetchPrFiles
 >
 
 const mockRunContextAgent = runContextAgent as jest.MockedFunction<
@@ -84,6 +89,8 @@ describe('runReview (coordinator)', () => {
     mockListCompleteReviewsForPr.mockResolvedValue([])
     mockFetchPrConversation.mockReset()
     mockFetchPrConversation.mockResolvedValue({ items: [] })
+    mockFetchPrFiles.mockReset()
+    mockFetchPrFiles.mockResolvedValue([])
     mockRunContextAgent.mockReset()
     mockModel = {
       chat: jest.fn(async (_messages, _tools, _systemPrompt) => {
@@ -459,6 +466,152 @@ describe('runReview (coordinator)', () => {
     expect(
       userContents.some(c => c.includes('model-invented pack must not win'))
     ).toBe(false)
+  })
+
+  describe('ground-truth diff (ATH-50)', () => {
+    // The context agent's JSON is the model's transcription of the diff, capped
+    // by an 8192-token output budget. It must never beat the real patches.
+    function mockElidingContextAgent() {
+      mockRunContextAgent.mockResolvedValue({
+        context: {
+          prUrl: 'https://github.com/owner/repo/pull/1',
+          prTitle: 'Feature',
+          prAuthor: 'alice',
+          prBranch: 'feat',
+          diff: 'diff --git a/foo.ts b/foo.ts\n@@\n+function getTier() { ... }',
+          filesChanged: ['foo.ts'],
+          fileCoverage: [{ file: 'foo.ts', status: 'READ' }],
+          externalContextCalls: 2,
+        },
+        tokensUsed: 10,
+        cost: 0,
+      })
+    }
+
+    function agentContexts(): string[] {
+      return (mockModel.chat as jest.Mock).mock.calls.map(
+        call => call[0][0].content as string
+      )
+    }
+
+    it('replaces the transcribed diff with the real patches', async () => {
+      mockElidingContextAgent()
+      mockFetchPrFiles.mockResolvedValue([
+        {
+          filename: 'foo.ts',
+          patch: '@@ -1 +1 @@\n+function getTier() { return REAL_BODY }',
+        },
+      ])
+
+      await runReview({
+        reviewId: 'test-rev-gt-1',
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        mode: 'full',
+        context: makeContext(stubOctokit()),
+      })
+
+      const contexts = agentContexts()
+      expect(contexts.some(c => c.includes('REAL_BODY'))).toBe(true)
+      expect(contexts.some(c => c.includes('getTier() { ... }'))).toBe(false)
+    })
+
+    it('replaces self-reported READ coverage with the computed status', async () => {
+      mockElidingContextAgent()
+      mockFetchPrFiles.mockResolvedValue([
+        { filename: 'foo.ts', patch: undefined },
+      ])
+
+      await runReview({
+        reviewId: 'test-rev-gt-2',
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        mode: 'full',
+        context: makeContext(stubOctokit()),
+      })
+
+      const contexts = agentContexts()
+      expect(contexts.some(c => c.includes('"status": "SKIPPED"'))).toBe(true)
+      expect(contexts.some(c => c.includes('"status": "READ"'))).toBe(false)
+    })
+
+    it('reports the fetch on the activity feed', async () => {
+      mockElidingContextAgent()
+      mockFetchPrFiles.mockResolvedValue([
+        { filename: 'foo.ts', patch: '@@ -1 +1 @@\n+ok' },
+      ])
+      const emit = jest.fn()
+
+      await runReview({
+        reviewId: 'test-rev-gt-3',
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        mode: 'full',
+        context: makeContext(stubOctokit()),
+        emit,
+      })
+
+      expect(emit).toHaveBeenCalledWith('progress', {
+        tool: 'ground_truth_diff',
+        args: { files: 1, truncated: 0, skipped: 0 },
+        label: '📄 Diff loaded from GitHub (1 files)',
+      })
+    })
+
+    it('falls back to the context agent when the fetch throws', async () => {
+      mockElidingContextAgent()
+      mockFetchPrFiles.mockRejectedValue(new Error('API down'))
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const review = await runReview({
+        reviewId: 'test-rev-gt-4',
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        mode: 'full',
+        context: makeContext(stubOctokit()),
+      })
+
+      warnSpy.mockRestore()
+      expect(review.reviewId).toBe('test-rev-gt-4')
+      expect(agentContexts().some(c => c.includes('getTier() { ... }'))).toBe(
+        true
+      )
+    })
+
+    it('skips the fetch when there is no GitHub token', async () => {
+      mockElidingContextAgent()
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+      await runReview({
+        reviewId: 'test-rev-gt-5',
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        mode: 'full',
+        context: makeContext(null),
+      })
+
+      warnSpy.mockRestore()
+      expect(mockFetchPrFiles).not.toHaveBeenCalled()
+    })
+
+    it('does not fetch when the PR URL cannot be parsed', async () => {
+      mockElidingContextAgent()
+
+      await runReview({
+        reviewId: 'test-rev-gt-6',
+        prUrl: 'https://example.com/not-a-pr',
+        mode: 'full',
+        context: makeContext(stubOctokit()),
+      })
+
+      expect(mockFetchPrFiles).not.toHaveBeenCalled()
+    })
+
+    it('does not fetch in quick mode', async () => {
+      await runReview({
+        reviewId: 'test-rev-gt-7',
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        mode: 'quick',
+        context: makeContext(stubOctokit()),
+      })
+
+      expect(mockFetchPrFiles).not.toHaveBeenCalled()
+    })
   })
 
   it('continues CONTEXT when GitHub conversation fetch throws', async () => {

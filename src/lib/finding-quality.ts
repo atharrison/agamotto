@@ -11,6 +11,9 @@ import type {
   EnrichedContext,
   Finding,
 } from '../agents/pr-review/schema'
+// Written by assembleGroundTruthDiff — shared so the sentinel the coordinator
+// emits and the one these rules look for cannot drift apart.
+import { PATCH_TRUNCATED_MARKER } from './ground-truth-diff'
 
 /** Whether the post-merge finding quality filter is active. */
 export enum FindingQualityFilter {
@@ -56,8 +59,6 @@ export const INCOMPLETE_CONTEXT_NOTE =
 /** Appended when a deletion claim quotes text that is still on a non-`-` patch line. */
 export const UNGROUNDED_NOTE =
   '*(severity auto-adjusted: cited text still present in the visible patch)*'
-
-const PATCH_TRUNCATED_MARKER = '[patch truncated'
 
 /** ATH-16 walk-backs: severity label vs “not actually blocking.” */
 const HEDGE_RE =
