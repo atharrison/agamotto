@@ -29,6 +29,7 @@ export type ControlCategory = Finding['category']
  */
 export type SignalGroups = string[][]
 
+/** A defect deliberately planted in the control PR for the review to find. */
 export interface ControlPlant {
   /** Stable short id used as the column key in the matrix, e.g. `P1`, `P3B`. */
   id: string
@@ -57,6 +58,7 @@ export interface ControlConfound {
   signals: SignalGroups
 }
 
+/** Everything the scorer needs to grade one control PR: its plants and confounds. */
 export interface ControlSpec {
   prUrl?: string
   plants: ControlPlant[]
@@ -81,6 +83,7 @@ export interface ControlFinding {
   confidence?: number
 }
 
+/** One dumped review of the control PR, as stored in `generated/control-reviews/`. */
 export interface ControlRun {
   round: number
   id?: string
@@ -88,6 +91,7 @@ export interface ControlRun {
   findings: ControlFinding[]
 }
 
+/** How one run fared against one plant. */
 export interface PlantScore {
   plantId: string
   bonus: boolean
@@ -99,6 +103,7 @@ export interface PlantScore {
   observedCategories: string[]
 }
 
+/** Every metric we track for a single run, and the per-plant detail behind them. */
 export interface RunScore {
   round: number
   reviewId: string
@@ -152,6 +157,7 @@ export function matchesFiles(
   })
 }
 
+/** True when every signal group has at least one alternative present in `text`. */
 export function matchesSignals(text: string, signals: SignalGroups): boolean {
   if (signals.length === 0) return false
   return signals.every(group =>
@@ -159,6 +165,7 @@ export function matchesSignals(text: string, signals: SignalGroups): boolean {
   )
 }
 
+/** Whether a finding describes a plant — right file, and every signal present. */
 export function findingCoversPlant(
   finding: ControlFinding,
   plant: ControlPlant
@@ -193,6 +200,10 @@ function attributedCategories(finding: ControlFinding): string[] {
   return raw.filter(Boolean).map(c => c.toUpperCase())
 }
 
+/**
+ * Grade one run against the spec. A finding can cover more than one plant, and
+ * findings matching no plant and no confound become the off-plant count.
+ */
 export function scoreRun(run: ControlRun, spec: ControlSpec): RunScore {
   const confounds = spec.confounds ?? []
   const matchedFindings = new Set<number>()
@@ -258,6 +269,7 @@ export function scoreRun(run: ControlRun, spec: ControlSpec): RunScore {
   }
 }
 
+/** Grade every run, ordered by round so the report reads chronologically. */
 export function scoreRuns(runs: ControlRun[], spec: ControlSpec): RunScore[] {
   return [...runs]
     .sort((a, b) => a.round - b.round)
@@ -310,6 +322,7 @@ export function formatPlantMatrix(
   return [header, divider, ...rows].join('\n')
 }
 
+/** The full markdown report: per-run table followed by the plant matrix. */
 export function formatScoreReport(
   scores: RunScore[],
   spec: ControlSpec

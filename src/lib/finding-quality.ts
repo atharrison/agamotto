@@ -13,7 +13,7 @@ import type {
 } from '../agents/pr-review/schema'
 // Written by assembleGroundTruthDiff — shared so the sentinel the coordinator
 // emits and the one these rules look for cannot drift apart.
-import { PATCH_TRUNCATED_MARKER } from './ground-truth-diff'
+import { hasTruncationMarker } from './ground-truth-diff'
 
 /** Whether the post-merge finding quality filter is active. */
 export enum FindingQualityFilter {
@@ -216,16 +216,35 @@ function isDeletionClaim(f: Finding): boolean {
   return DELETION_CLAIM_RE.test(findingText(f))
 }
 
+/**
+ * Whether the finding's file reached the agents incomplete.
+ *
+ * Coverage is checked first, then the file's own diff section — scoped, so a
+ * truncation elsewhere in a large PR no longer taints findings on files that
+ * were shown in full. Only when the path has no section at all do we fall back
+ * to the whole diff, because then the agent is citing bytes we never sent.
+ */
 function isFileTruncated(file: string, context: EnrichedContext): boolean {
   if (
     context.fileCoverage.some(c => c.file === file && c.status === 'TRUNCATED')
   ) {
     return true
   }
+  const section = diffSectionFor(context.diff, file)
+  if (section !== null) return hasTruncationMarker(section)
   return (
-    context.diff.includes(PATCH_TRUNCATED_MARKER) &&
-    (context.diff.includes(file) || context.filesChanged.includes(file))
+    hasTruncationMarker(context.diff) && context.filesChanged.includes(file)
   )
+}
+
+/** The `diff --git` block naming `file`, or null when the diff omits it. */
+function diffSectionFor(diff: string, file: string): string | null {
+  for (const section of diff.split(/^diff --git /m)) {
+    if (!section) continue
+    const header = section.slice(0, section.indexOf('\n'))
+    if (header.includes(file)) return section
+  }
+  return null
 }
 
 function claimedSnippetStillPresent(

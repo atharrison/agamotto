@@ -182,7 +182,6 @@ const DEFAULT_CONVENTIONS = `
 - Use enums with UPPER_CASE string values instead of magic strings
 - Extract shared utilities rather than duplicating logic
 - Use consistent naming: camelCase for variables/functions, PascalCase for types/classes
-- Add JSDoc/TSDoc on all exported functions and types
 - Imports ordered: built-ins → external packages → internal modules
 `.trim()
 
@@ -198,10 +197,11 @@ Focus on:
 - Naming violations (variables, functions, types, enums)
 - Import ordering and organization
 - Shared utilities vs. duplicated inline logic
-- Missing or stale docstrings/type annotations on exported symbols
 - Enum usage (prefer enums with UPPER_CASE values over magic strings)
 
 Do NOT comment on correctness, security, performance, or general style preference — those are handled by other agents.
+
+Missing doc comments are a linter's job, not yours. Do not enumerate exported symbols that lack JSDoc/TSDoc — reviews that do crowd out the judgment calls only a reviewer can make. Spend the budget on violations that require reading the code.
 
 Be precise: cite the exact file and line. Only flag real violations of the listed conventions, not personal preference.
 Confidence 0.9+ = clear violation. 0.7–0.9 = likely violation. Below 0.7 = skip it.`

@@ -28,7 +28,24 @@ export const DEFAULT_DIFF_MAX_BYTES = 128 * 1024
 /** A patch fragment smaller than this is not worth spending the tail of the budget on. */
 const MIN_USEFUL_PATCH_BYTES = 512
 
+/** Sentinel that opens the line `truncatePatch` leaves in place of cut bytes. */
 export const PATCH_TRUNCATED_MARKER = '[patch truncated'
+
+/** The whole line appended in place of the bytes a truncated patch lost. */
+const TRUNCATED_LINE_PREFIX = `// ${PATCH_TRUNCATED_MARKER}`
+
+/**
+ * Whether `text` contains a patch that our own truncation actually cut.
+ *
+ * Matches at the start of a line, because source code that merely *mentions*
+ * the marker — this module's own declaration, or a test asserting on it —
+ * reaches a reviewer inside a diff, behind a `+`/`-`/space prefix. Substring
+ * matching on the marker alone made every finding on this repo's own PRs look
+ * like it cited a truncated file.
+ */
+export function hasTruncationMarker(text: string): boolean {
+  return text.split('\n').some(line => line.startsWith(TRUNCATED_LINE_PREFIX))
+}
 
 /** A changed file as GitHub's pulls.listFiles returns it. */
 export interface RawPrFile {
@@ -40,13 +57,16 @@ export interface RawPrFile {
   blobUrl?: string
 }
 
+/** The assembled diff plus the coverage report that describes what it omits. */
 export interface GroundTruthDiff {
   diff: string
   filesChanged: string[]
   fileCoverage: FileCoverage[]
 }
 
+/** A patch after the per-file cap, and how much of it did not survive. */
 export interface TruncatedPatch {
+  /** The kept bytes, with the truncation line appended when `truncated`. */
   text: string
   truncated: boolean
   omittedBytes: number
@@ -62,7 +82,7 @@ export function truncatePatch(
   }
   const omittedBytes = patch.length - maxBytes
   return {
-    text: `${patch.slice(0, maxBytes)}\n// ${PATCH_TRUNCATED_MARKER} — ${omittedBytes} bytes omitted]`,
+    text: `${patch.slice(0, maxBytes)}\n${TRUNCATED_LINE_PREFIX} — ${omittedBytes} bytes omitted]`,
     truncated: true,
     omittedBytes,
   }
@@ -116,9 +136,10 @@ export function assembleGroundTruthDiff(
       continue
     }
 
+    const keptBytes = Math.min(filePatchMaxBytes, remaining)
     const { text, truncated, omittedBytes } = truncatePatch(
       file.patch,
-      Math.min(filePatchMaxBytes, remaining)
+      keptBytes
     )
     const section = `diff --git a/${file.filename} b/${file.filename}\n${text}`
     sections.push(section)
@@ -130,7 +151,10 @@ export function assembleGroundTruthDiff(
       ...(truncated
         ? {
             reason: `patch truncated — ${omittedBytes} bytes omitted`,
-            linesRead: countLines(file.patch.slice(0, text.length)),
+            // Against keptBytes, not text.length: text carries the appended
+            // truncation line, so slicing the original patch to its length
+            // credits us with bytes the agent never saw.
+            linesRead: countLines(file.patch.slice(0, keptBytes)),
             linesTotal,
           }
         : { linesRead: linesTotal, linesTotal }),

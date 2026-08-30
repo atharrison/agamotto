@@ -3,6 +3,7 @@ import {
   FILE_PATCH_MAX_BYTES,
   assembleGroundTruthDiff,
   formatGroundTruthActivity,
+  hasTruncationMarker,
   truncatePatch,
   type RawPrFile,
 } from '../src/lib/ground-truth-diff'
@@ -40,11 +41,33 @@ describe('truncatePatch', () => {
 
   it('leaves the marker the ATH-39 truncation rules look for', () => {
     expect(truncatePatch('0123456789', 4).text).toContain('[patch truncated')
+    expect(hasTruncationMarker(truncatePatch('0123456789', 4).text)).toBe(true)
   })
 
   it('defaults to the per-file cap', () => {
     const big = 'x'.repeat(FILE_PATCH_MAX_BYTES + 10)
     expect(truncatePatch(big).omittedBytes).toBe(10)
+  })
+})
+
+describe('hasTruncationMarker', () => {
+  it('is false for a diff with no truncation', () => {
+    expect(hasTruncationMarker('@@ -1 +1 @@\n-old\n+new')).toBe(false)
+  })
+
+  it('ignores source code that merely declares the marker', () => {
+    const diff = [
+      'diff --git a/src/lib/ground-truth-diff.ts b/src/lib/ground-truth-diff.ts',
+      "+export const PATCH_TRUNCATED_MARKER = '[patch truncated'",
+      '+const TRUNCATED_LINE_PREFIX = `// ${PATCH_TRUNCATED_MARKER}`',
+    ].join('\n')
+    expect(hasTruncationMarker(diff)).toBe(false)
+  })
+
+  it('ignores a marker sitting behind a diff line prefix', () => {
+    expect(hasTruncationMarker('+// [patch truncated — 5 bytes omitted]')).toBe(
+      false
+    )
   })
 })
 
@@ -103,7 +126,10 @@ describe('assembleGroundTruthDiff', () => {
       filePatchMaxBytes: 30,
     }).fileCoverage
     expect(coverage.linesTotal).toBe(20)
-    expect(coverage.linesRead).toBeLessThan(20)
+    // 30 bytes covers '+line 0\n+line 1\n+line 2\n+line ' — four lines, the
+    // last partial. Counted against the cap, not against the emitted text,
+    // which carries the truncation line and would credit us extra lines.
+    expect(coverage.linesRead).toBe(4)
   })
 
   it('stops spending the whole-diff budget and skips the remainder', () => {
