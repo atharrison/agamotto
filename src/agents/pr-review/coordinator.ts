@@ -15,8 +15,13 @@ import {
 } from '../../lib/finding-quality'
 import { withSpan } from '../../harness/observability'
 import { listCompleteReviewsForPr } from '../../memory/review-store'
-import { fetchPrConversation } from '../../tools/github'
+import { fetchPrConversation, fetchPrFiles } from '../../tools/github'
 import { parsePrUrl } from '../../lib/queue'
+import {
+  assembleGroundTruthDiff,
+  formatGroundTruthActivity,
+  type GroundTruthDiff,
+} from '../../lib/ground-truth-diff'
 import {
   MAX_PRIOR_ROUNDS,
   formatPriorRounds,
@@ -168,6 +173,13 @@ async function _runReview(
       prUrl,
       reviewId
     )
+    // Started before the context agent so the fetch overlaps the tool loop, and
+    // applied after it so the model's transcription can never win.
+    const groundTruthPromise = loadGroundTruthDiff(
+      context.octokit,
+      prUrl,
+      reviewId
+    )
     const ctxResult = await withSpan(
       'harness.review.context',
       { 'review.id': reviewId },
@@ -225,8 +237,25 @@ async function _runReview(
       args: { itemCount, omitted, failed: githubFailed },
       label: githubLabel,
     })
+    const groundTruth = await groundTruthPromise
+    if (groundTruth) {
+      emit('progress', {
+        tool: 'ground_truth_diff',
+        args: {
+          files: groundTruth.filesChanged.length,
+          truncated: groundTruth.fileCoverage.filter(
+            c => c.status === 'TRUNCATED'
+          ).length,
+          skipped: groundTruth.fileCoverage.filter(c => c.status === 'SKIPPED')
+            .length,
+        },
+        label: formatGroundTruthActivity(groundTruth),
+      })
+    }
+
     enrichedContext = {
       ...ctxResult.context,
+      ...(groundTruth ?? {}),
       priorRounds,
       githubConversation,
     }
@@ -543,6 +572,40 @@ async function loadPriorRounds(
  * Load compacted GitHub conversation for this PR. Empty on missing token,
  * unparseable URL, or API failure — never fail the pipeline.
  */
+/**
+ * Fetch the PR's diff and file list straight from GitHub so the domain agents
+ * read the real patches rather than the context agent's transcription of them.
+ *
+ * Returns null on any failure, in which case the context agent's own values
+ * stand — a degraded review beats no review, and the pre-ATH-50 behaviour is
+ * exactly that fallback.
+ */
+async function loadGroundTruthDiff(
+  octokit: Octokit | null,
+  prUrl: string,
+  reviewId: string
+): Promise<GroundTruthDiff | null> {
+  if (!octokit) {
+    console.warn(
+      `[coordinator][${reviewId}] ground-truth diff skipped: no GitHub token`
+    )
+    return null
+  }
+  try {
+    const parsed = parsePrUrl(prUrl)
+    if (!parsed) return null
+    const files = await fetchPrFiles(octokit, parsed)
+    if (files.length === 0) return null
+    return assembleGroundTruthDiff(files)
+  } catch (err) {
+    console.warn(
+      `[coordinator][${reviewId}] ground-truth diff load failed:`,
+      err
+    )
+    return null
+  }
+}
+
 async function loadGithubConversation(
   octokit: Octokit | null,
   prUrl: string,

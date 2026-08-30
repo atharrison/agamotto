@@ -3,16 +3,30 @@ import { GithubCommentKind } from '../../lib/github-conversation'
 
 // ── Finding ───────────────────────────────────────────────────────────────────
 
+/** The five review domains. A finding's category is the agent that raised it. */
+export const FINDING_CATEGORIES = [
+  'STYLE',
+  'CONVENTIONS',
+  'CORRECTNESS',
+  'SECURITY',
+  'PERFORMANCE',
+] as const
+
+export const FindingCategorySchema = z.enum(FINDING_CATEGORIES)
+export type FindingCategory = z.infer<typeof FindingCategorySchema>
+
 export const FindingSchema = z.object({
   id: z.string(),
   severity: z.enum(['BLOCKING', 'SUGGESTION', 'NIT']),
-  category: z.enum([
-    'STYLE',
-    'CONVENTIONS',
-    'CORRECTNESS',
-    'SECURITY',
-    'PERFORMANCE',
-  ]),
+  category: FindingCategorySchema,
+  /**
+   * Every agent that independently raised this defect, in merge order (ATH-50).
+   * Agents run in parallel and overlap constantly, so convergence is real
+   * evidence — three specialists flagging one line is the strongest triage
+   * signal a review produces. Populated by `mergeResults`; absent on findings
+   * that predate multi-attribution, where `[category]` is the equivalent.
+   */
+  categories: z.array(FindingCategorySchema).optional(),
   file: z.string(),
   line: z.number().int().positive().optional(),
   title: z.string(),
@@ -21,6 +35,14 @@ export const FindingSchema = z.object({
   suggestedFix: z.string().optional(),
 })
 export type Finding = z.infer<typeof FindingSchema>
+
+/** All agents credited with a finding, tolerating pre-ATH-50 stored reviews. */
+export function findingCategories(finding: {
+  category: string
+  categories?: string[]
+}): string[] {
+  return finding.categories?.length ? finding.categories : [finding.category]
+}
 
 // ── FileCoverage ──────────────────────────────────────────────────────────────
 
@@ -38,13 +60,7 @@ export type FileCoverage = z.infer<typeof FileCoverageSchema>
 
 export const PriorFindingSchema = z.object({
   severity: z.enum(['BLOCKING', 'SUGGESTION', 'NIT']),
-  category: z.enum([
-    'STYLE',
-    'CONVENTIONS',
-    'CORRECTNESS',
-    'SECURITY',
-    'PERFORMANCE',
-  ]),
+  category: FindingCategorySchema,
   file: z.string(),
   line: z.number().int().positive().optional(),
   title: z.string(),

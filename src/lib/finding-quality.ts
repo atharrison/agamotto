@@ -11,6 +11,9 @@ import type {
   EnrichedContext,
   Finding,
 } from '../agents/pr-review/schema'
+// Written by assembleGroundTruthDiff — shared so the sentinel the coordinator
+// emits and the one these rules look for cannot drift apart.
+import { hasTruncationMarker } from './ground-truth-diff'
 
 /** Whether the post-merge finding quality filter is active. */
 export enum FindingQualityFilter {
@@ -56,8 +59,6 @@ export const INCOMPLETE_CONTEXT_NOTE =
 /** Appended when a deletion claim quotes text that is still on a non-`-` patch line. */
 export const UNGROUNDED_NOTE =
   '*(severity auto-adjusted: cited text still present in the visible patch)*'
-
-const PATCH_TRUNCATED_MARKER = '[patch truncated'
 
 /** ATH-16 walk-backs: severity label vs “not actually blocking.” */
 const HEDGE_RE =
@@ -117,6 +118,8 @@ export function applyFindingQualityFilters(
   env: Record<string, string | undefined> = process.env
 ): Finding[] {
   if (!isFindingQualityFilterEnabled(env)) return findings
+  // Pre-split once so isFileTruncated doesn't re-split for every finding.
+  const diffSections = buildDiffSections(context.diff)
   return findings.flatMap(f => {
     if (isWithdrawal(f)) return []
 
@@ -130,7 +133,7 @@ export function applyFindingQualityFilters(
     if (hasTitleBodyContradiction(next)) {
       next = { ...next, body: appendNote(next.body, TITLE_BODY_NOTE) }
     }
-    return [applyGrounding(next, context)]
+    return [applyGrounding(next, context, diffSections)]
   })
 }
 
@@ -186,8 +189,12 @@ function markQualityAdjusted(f: Finding, note: string): Finding {
   })
 }
 
-function applyGrounding(finding: Finding, context: EnrichedContext): Finding {
-  const truncated = isFileTruncated(finding.file, context)
+function applyGrounding(
+  finding: Finding,
+  context: EnrichedContext,
+  diffSections: Map<string, string>
+): Finding {
+  const truncated = isFileTruncated(finding.file, context, diffSections)
   if (isPlaceholderClaim(finding) && truncated) {
     return markQualityAdjusted(finding, TRUNCATED_FILE_NOTE)
   }
@@ -215,16 +222,49 @@ function isDeletionClaim(f: Finding): boolean {
   return DELETION_CLAIM_RE.test(findingText(f))
 }
 
-function isFileTruncated(file: string, context: EnrichedContext): boolean {
+/**
+ * Whether the finding's file reached the agents incomplete.
+ *
+ * Coverage is checked first, then the file's own diff section — scoped, so a
+ * truncation elsewhere in a large PR no longer taints findings on files that
+ * were shown in full. Only when the path has no section at all do we fall back
+ * to the whole diff, because then the agent is citing bytes we never sent.
+ *
+ * `diffSections` is pre-computed once per filter pass; call `buildDiffSections`
+ * before iterating findings to avoid re-splitting the full diff per finding.
+ */
+function isFileTruncated(
+  file: string,
+  context: EnrichedContext,
+  diffSections: Map<string, string>
+): boolean {
   if (
     context.fileCoverage.some(c => c.file === file && c.status === 'TRUNCATED')
   ) {
     return true
   }
+  const section = diffSections.get(file) ?? null
+  if (section !== null) return hasTruncationMarker(section)
   return (
-    context.diff.includes(PATCH_TRUNCATED_MARKER) &&
-    (context.diff.includes(file) || context.filesChanged.includes(file))
+    hasTruncationMarker(context.diff) && context.filesChanged.includes(file)
   )
+}
+
+/**
+ * Split the assembled diff into a map of filename → section body.
+ * Called once per filter pass so per-finding truncation checks are O(1) lookups.
+ */
+function buildDiffSections(diff: string): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const section of diff.split(/^diff --git /m)) {
+    if (!section) continue
+    const newlineIdx = section.indexOf('\n')
+    const header = newlineIdx === -1 ? section : section.slice(0, newlineIdx)
+    // Header is `a/path b/path` — extract from the b/ side as the canonical name
+    const bMatch = header.match(/\s+b\/(.+)$/)
+    if (bMatch) map.set(bMatch[1], section)
+  }
+  return map
 }
 
 function claimedSnippetStillPresent(

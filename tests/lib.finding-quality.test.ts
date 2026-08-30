@@ -493,6 +493,57 @@ describe('applyFindingQualityFilters — ATH-39 replay fixtures', () => {
     expect(out.body).toContain(TRUNCATED_FILE_NOTE)
   })
 
+  it('does not treat the marker declaration in our own source as truncation', () => {
+    const ctx = makeContext({
+      filesChanged: ['src/lib/ground-truth-diff.ts'],
+      fileCoverage: [{ file: 'src/lib/ground-truth-diff.ts', status: 'READ' }],
+      diff: `diff --git a/src/lib/ground-truth-diff.ts b/src/lib/ground-truth-diff.ts
++export const PATCH_TRUNCATED_MARKER = '[patch truncated'
+`,
+    })
+    const [out] = applyFindingQualityFilters(
+      [
+        makeFinding({
+          file: 'src/lib/ground-truth-diff.ts',
+          title: 'linesRead is computed from the emitted text length',
+          body: 'The slice credits bytes the agent never saw.',
+        }),
+      ],
+      ctx,
+      ON
+    )
+    expect(out.severity).toBe('BLOCKING')
+    expect(out.body).not.toContain(TRUNCATED_FILE_NOTE)
+  })
+
+  it('confines a real truncation to the file whose section carries it', () => {
+    const ctx = makeContext({
+      filesChanged: ['src/big.ts', 'src/small.ts'],
+      fileCoverage: [
+        { file: 'src/big.ts', status: 'READ' },
+        { file: 'src/small.ts', status: 'READ' },
+      ],
+      diff: `diff --git a/src/big.ts b/src/big.ts
++export const big = 1
+// [patch truncated — 900 bytes omitted]
+diff --git a/src/small.ts b/src/small.ts
++export const small = 2
+`,
+    })
+    const [big, small] = applyFindingQualityFilters(
+      [
+        makeFinding({ file: 'src/big.ts', body: 'Race in the unseen tail.' }),
+        makeFinding({ file: 'src/small.ts', body: 'Off-by-one on line 2.' }),
+      ],
+      ctx,
+      ON
+    )
+    expect(big.severity).toBe('SUGGESTION')
+    expect(big.body).toContain(TRUNCATED_FILE_NOTE)
+    expect(small.severity).toBe('BLOCKING')
+    expect(small.body).not.toContain(TRUNCATED_FILE_NOTE)
+  })
+
   it('does not re-append a hedge note that is already on the body', () => {
     const finding = makeFinding({
       body: `No blocking issue here on re-examination.\n\n${HEDGE_NOTE}`,

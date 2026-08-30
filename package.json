@@ -17,6 +17,7 @@
     "format": "prettier --write \"**/*.{ts,js,tsx,jsx,json,md,sql}\"",
     "format:check": "prettier --check \"**/*.{ts,js,tsx,jsx,json,md,sql}\"",
     "review": "ts-node --esm src/cli/index.ts",
+    "score:control": "node scripts/score-control-reviews.ts",
     "pdf": "./scripts/generate-pdf.sh",
     "db:start": "dotenvx run -- supabase start",
     "db:stop": "supabase stop",
