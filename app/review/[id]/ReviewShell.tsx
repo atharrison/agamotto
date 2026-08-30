@@ -21,6 +21,10 @@ import {
   buildFinalizeBanner,
   type FinalizeBanner,
 } from '../../../src/lib/finalize-comment'
+import {
+  finalizeDecisionsFromUi,
+  formatReviewCommentFromUi,
+} from '../../../src/lib/review-comment-copy'
 
 interface Finding {
   id: string
@@ -141,7 +145,7 @@ function SubmitBannerView({
           onClick={() => onCopy(copyBody)}
           className="mt-2 rounded bg-gray-800 px-3 py-1 text-xs font-semibold text-white hover:bg-gray-700"
         >
-          {copied ? 'Copied' : 'Copy comment'}
+          {copied ? 'Copied' : 'Copy review'}
         </button>
       )}
     </div>
@@ -418,16 +422,7 @@ export function ReviewShell({
     setSubmitResult(null) // clear any previous error before retry
     try {
       const body = {
-        decisions: Object.values(decisions).map(d => ({
-          findingId: d.findingId,
-          action: d.accepted
-            ? d.editedTitle || d.editedBody
-              ? 'EDIT'
-              : 'ACCEPT'
-            : 'REJECT',
-          editedTitle: d.editedTitle,
-          editedBody: d.editedBody,
-        })),
+        decisions: finalizeDecisionsFromUi(decisions),
         postComment,
       }
       const res = await fetch(`/api/review/${reviewId}/finalize`, {
@@ -499,6 +494,12 @@ export function ReviewShell({
   }
   const accepted = Object.values(decisions).filter(d => d.accepted).length
   const total = findings.length
+  const reviewMarkdown = formatReviewCommentFromUi({
+    reviewId,
+    findings,
+    decisions,
+    extras: storedResult ?? undefined,
+  })
 
   return (
     <div className="flex gap-6">
@@ -683,15 +684,22 @@ export function ReviewShell({
                 onCopy={copyComment}
               />
             ) : (
-              <button
-                disabled={submitting}
-                onClick={() => handleSubmit(true)}
-                className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
-              >
-                {submitting
-                  ? 'Submitting…'
-                  : `Submit + Post to GitHub (${accepted}/${total})`}
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  disabled={submitting}
+                  onClick={() => handleSubmit(true)}
+                  className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                >
+                  {submitting
+                    ? 'Submitting…'
+                    : `Submit + Post to GitHub (${accepted}/${total})`}
+                </button>
+                <CopyReviewButton
+                  markdown={reviewMarkdown}
+                  copied={copied}
+                  onCopy={copyComment}
+                />
+              </div>
             )}
           </div>
         )}
@@ -706,13 +714,20 @@ export function ReviewShell({
                 onCopy={copyComment}
               />
             ) : (
-              <button
-                disabled={submitting}
-                onClick={() => handleApprove(true)}
-                className="rounded-lg bg-green-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-600 disabled:opacity-50"
-              >
-                {submitting ? 'Approving…' : '✓ Approve PR on GitHub'}
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  disabled={submitting}
+                  onClick={() => handleApprove(true)}
+                  className="rounded-lg bg-green-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-600 disabled:opacity-50"
+                >
+                  {submitting ? 'Approving…' : '✓ Approve PR on GitHub'}
+                </button>
+                <CopyReviewButton
+                  markdown={reviewMarkdown}
+                  copied={copied}
+                  onCopy={copyComment}
+                />
+              </div>
             )}
           </div>
         )}
@@ -848,6 +863,26 @@ export function ReviewShell({
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
+
+function CopyReviewButton({
+  markdown,
+  copied,
+  onCopy,
+}: {
+  markdown: string
+  copied: boolean
+  onCopy: (text: string) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onCopy(markdown)}
+      className="rounded-lg border border-gray-600 bg-gray-800 px-5 py-2.5 text-sm font-semibold text-gray-100 hover:bg-gray-700"
+    >
+      {copied ? 'Copied' : 'Copy review'}
+    </button>
+  )
+}
 
 function SiblingNavBlock({ nav }: { nav: SiblingReviewNav }) {
   const btn =
