@@ -1,6 +1,7 @@
 // @octokit/rest is resolved to __mocks__/@octokit/rest.js via jest.config.js moduleNameMapper.
 // Tests inject their own mock Octokit object via the factory argument.
 import {
+  FILE_CONTENT_MAX_BYTES,
   createGithubTools,
   createOctokit,
   fetchPrConversation,
@@ -41,6 +42,13 @@ describe('createGithubTools', () => {
   })
 
   describe('fetch_pr_files', () => {
+    it('describes the actual per-file byte cap, not the retired 8 KB figure', () => {
+      const tools = createGithubTools(mockOctokit())
+      const kb = FILE_CONTENT_MAX_BYTES / 1024
+      expect(tools.fetch_pr_files.description).toContain(`${kb} KB`)
+      expect(tools.fetch_pr_files.description).not.toContain('8 KB')
+    })
+
     it('returns mapped file list with patch within limit returned as-is', async () => {
       const octokit = mockOctokit()
       const bigPatch = 'x'.repeat(10_000)

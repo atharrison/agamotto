@@ -35,7 +35,8 @@ const PostReviewCommentSchema = z.object({
   body: z.string(),
 })
 
-const FILE_CONTENT_MAX_BYTES = 32 * 1024 // 32 KB per file — covers typical test files
+/** Per-file patch cap for fetch_pr_files. ATH-28 raised 8 KB → 32 KB. */
+export const FILE_CONTENT_MAX_BYTES = 32 * 1024
 
 // ── Tool factory ──────────────────────────────────────────────────────────────
 
@@ -85,8 +86,7 @@ export function createGithubTools(
     },
 
     fetch_pr_files: {
-      description:
-        'Fetch the list of files changed in a pull request, with their patch and content (truncated to 8 KB per file).',
+      description: `Fetch the list of files changed in a pull request, with their patch and content (truncated to ${FILE_CONTENT_MAX_BYTES / 1024} KB per file).`,
       schema: FetchPrFilesSchema,
       fn: async ({ owner, repo, pull_number }) => {
         const { data } = await octokit.pulls.listFiles({
