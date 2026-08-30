@@ -11,7 +11,12 @@ import {
   buildSubmission,
 } from '../../../../../src/agents/pr-review/approval'
 import { createOctokit } from '../../../../../src/tools/github'
-import { getGitHubToken } from '../../../../../src/lib/supabase/server'
+import {
+  GitHubAuthError,
+  GITHUB_SESSION_EXPIRED_MESSAGE,
+  getFreshGitHubToken,
+  githubTokenFromFresh,
+} from '../../../../../src/lib/github-auth'
 import { parsePrUrl } from '../../../../../src/lib/queue'
 import { markPrReviewed } from '../../../../../src/memory/tracked-pr-store'
 import type { FindingDecision } from '../../../../../src/agents/pr-review/schema'
@@ -32,6 +37,55 @@ const FinalizeBody = z.object({
 })
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function postGithubPrComment(opts: {
+  sessionExpiredComment: { error: string } | null
+  githubToken: string | null
+  prUrlParts: RegExpMatchArray | null
+  commentBody: string
+}): Promise<unknown> {
+  const withBody = (result: Record<string, unknown>) => ({
+    ...result,
+    body: opts.commentBody,
+  })
+
+  if (opts.sessionExpiredComment) {
+    console.error(
+      '[finalize] GitHub comment post failed:',
+      opts.sessionExpiredComment.error
+    )
+    return withBody(opts.sessionExpiredComment)
+  }
+
+  const octokit = createOctokit(opts.githubToken)
+  if (!octokit) {
+    return withBody({
+      skipped: true,
+      reason: 'GITHUB_TOKEN not configured',
+    })
+  }
+  if (!opts.prUrlParts) {
+    return withBody({
+      skipped: true,
+      reason: 'Could not parse prUrl for GitHub API',
+    })
+  }
+  if (process.env.DRY_RUN === 'true') {
+    return withBody({ dryRun: true })
+  }
+  try {
+    const { data } = await octokit.issues.createComment({
+      owner: opts.prUrlParts[1],
+      repo: opts.prUrlParts[2],
+      issue_number: Number(opts.prUrlParts[3]),
+      body: opts.commentBody,
+    })
+    return withBody({ id: data.id, url: data.html_url })
+  } catch (err) {
+    console.error('[finalize] GitHub comment post failed:', err)
+    return withBody({ error: String(err) })
+  }
+}
 
 /**
  * Mark the corresponding tracked_pr as REVIEWED and record which review
@@ -143,7 +197,12 @@ export async function POST(
     )
   }
   const memory = createMemoryStore()
-  const githubToken = await getGitHubToken()
+  const freshGithub = await getFreshGitHubToken()
+  const githubToken = githubTokenFromFresh(freshGithub)
+  const sessionExpiredComment =
+    !freshGithub.ok && freshGithub.error === GitHubAuthError.REFRESH_FAILED
+      ? { error: GITHUB_SESSION_EXPIRED_MESSAGE }
+      : null
 
   if (approve) {
     // ── Approve path: no findings, post LGTM comment ────────────────────────
@@ -174,33 +233,12 @@ export async function POST(
 
     let commentResult: unknown = null
     if (postComment) {
-      const octokit = createOctokit(githubToken)
-      if (!octokit) {
-        commentResult = { skipped: true, reason: 'GITHUB_TOKEN not configured' }
-      } else if (!prUrlParts) {
-        commentResult = {
-          skipped: true,
-          reason: 'Could not parse prUrl for GitHub API',
-        }
-      } else {
-        const commentBody = formatApprovalComment(review)
-        const dryRun = process.env.DRY_RUN === 'true'
-        if (dryRun) {
-          commentResult = { dryRun: true, body: commentBody }
-        } else {
-          try {
-            const { data } = await octokit.issues.createComment({
-              owner: prUrlParts[1],
-              repo: prUrlParts[2],
-              issue_number: Number(prUrlParts[3]),
-              body: commentBody,
-            })
-            commentResult = { id: data.id, url: data.html_url }
-          } catch (err) {
-            commentResult = { error: String(err) }
-          }
-        }
-      }
+      commentResult = await postGithubPrComment({
+        sessionExpiredComment,
+        githubToken,
+        prUrlParts,
+        commentBody: formatApprovalComment(review),
+      })
     }
 
     try {
@@ -268,33 +306,12 @@ export async function POST(
 
   let commentResult: unknown = null
   if (postComment) {
-    const octokit = createOctokit(githubToken)
-    if (!octokit) {
-      commentResult = { skipped: true, reason: 'GITHUB_TOKEN not configured' }
-    } else if (!prUrlParts) {
-      commentResult = {
-        skipped: true,
-        reason: 'Could not parse prUrl for GitHub API',
-      }
-    } else {
-      const commentBody = formatGitHubComment(review, submission)
-      const dryRun = process.env.DRY_RUN === 'true'
-      if (dryRun) {
-        commentResult = { dryRun: true, body: commentBody }
-      } else {
-        try {
-          const { data } = await octokit.issues.createComment({
-            owner: prUrlParts[1],
-            repo: prUrlParts[2],
-            issue_number: Number(prUrlParts[3]),
-            body: commentBody,
-          })
-          commentResult = { id: data.id, url: data.html_url }
-        } catch (err) {
-          commentResult = { error: String(err) }
-        }
-      }
-    }
+    commentResult = await postGithubPrComment({
+      sessionExpiredComment,
+      githubToken,
+      prUrlParts,
+      commentBody: formatGitHubComment(review, submission),
+    })
   }
 
   try {

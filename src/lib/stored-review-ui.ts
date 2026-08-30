@@ -23,6 +23,11 @@ export interface StoredReviewPayload {
   blockingIssues?: StoredFinding[]
   suggestions?: StoredFinding[]
   nits?: StoredFinding[]
+  summary?: string
+  verdict?: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT'
+  verdictSummary?: string
+  whatLooksGood?: string[]
+  testingRecommendations?: string[]
 }
 
 /** Initial ReviewShell state for a COMPLETE stored review. */

@@ -16,6 +16,15 @@ import {
   formatTokenUsage,
   type ReviewRunStatsPayload,
 } from '../../../src/lib/review-run-stats'
+import {
+  FinalizeBannerTone,
+  buildFinalizeBanner,
+  type FinalizeBanner,
+} from '../../../src/lib/finalize-comment'
+import {
+  finalizeDecisionsFromUi,
+  formatReviewCommentFromUi,
+} from '../../../src/lib/review-comment-copy'
 
 interface Finding {
   id: string
@@ -97,6 +106,52 @@ function formatElapsed(ms: number): string {
   return m > 0 ? `${m}m ${s % 60}s` : `${s}s`
 }
 
+const BANNER_TONE_CLASS: Record<FinalizeBannerTone, string> = {
+  [FinalizeBannerTone.SUCCESS]:
+    'border-green-700 bg-green-950/40 text-green-400',
+  [FinalizeBannerTone.WARNING]:
+    'border-amber-700 bg-amber-950/40 text-amber-300',
+  [FinalizeBannerTone.ERROR]: 'border-red-800 bg-red-950/40 text-red-400',
+}
+
+function SubmitBannerView({
+  banner,
+  copied,
+  onCopy,
+}: {
+  banner: FinalizeBanner
+  copied: boolean
+  onCopy: (text: string) => void
+}) {
+  const copyBody = banner.copyBody
+  return (
+    <div
+      className={`rounded-lg border px-4 py-2.5 text-sm font-medium ${BANNER_TONE_CLASS[banner.tone]}`}
+    >
+      <p>
+        {banner.message}
+        {banner.detail && (
+          <span
+            className="ml-1.5 cursor-help text-xs font-normal text-amber-500/80 underline decoration-dotted underline-offset-2"
+            title={banner.detail}
+          >
+            Details
+          </span>
+        )}
+      </p>
+      {copyBody && (
+        <button
+          type="button"
+          onClick={() => onCopy(copyBody)}
+          className="mt-2 rounded bg-gray-800 px-3 py-1 text-xs font-semibold text-white hover:bg-gray-700"
+        >
+          {copied ? 'Copied' : 'Copy review'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 interface Props {
   reviewId: string
   prUrl: string
@@ -125,7 +180,8 @@ export function ReviewShell({
   const [editBody, setEditBody] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const [submitResult, setSubmitResult] = useState<string | null>(null)
+  const [submitResult, setSubmitResult] = useState<FinalizeBanner | null>(null)
+  const [copied, setCopied] = useState(false)
   const [phaseStatuses, setPhaseStatuses] = useState<
     Record<string, PhaseStatus>
   >(
@@ -351,21 +407,22 @@ export function ReviewShell({
     setEditingId(null)
   }
 
+  async function copyComment(text: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Clipboard can be blocked (non-HTTPS, permissions); the banner still shows.
+    }
+  }
+
   async function handleSubmit(postComment: boolean) {
     setSubmitting(true)
     setSubmitResult(null) // clear any previous error before retry
     try {
       const body = {
-        decisions: Object.values(decisions).map(d => ({
-          findingId: d.findingId,
-          action: d.accepted
-            ? d.editedTitle || d.editedBody
-              ? 'EDIT'
-              : 'ACCEPT'
-            : 'REJECT',
-          editedTitle: d.editedTitle,
-          editedBody: d.editedBody,
-        })),
+        decisions: finalizeDecisionsFromUi(decisions),
         postComment,
       }
       const res = await fetch(`/api/review/${reviewId}/finalize`, {
@@ -375,13 +432,27 @@ export function ReviewShell({
       })
       const data = await res.json()
       setSubmitResult(
-        res.ok
-          ? `Submitted: ${data.summary.accepted} accepted, ${data.summary.rejected} rejected`
-          : `Error: ${data.error}`
+        buildFinalizeBanner({
+          httpOk: res.ok,
+          httpError: data.error,
+          approve: false,
+          postComment,
+          comment: data.comment,
+          accepted: data.summary?.accepted,
+          rejected: data.summary?.rejected,
+        })
       )
       if (res.ok) setSubmitted(true)
     } catch {
-      setSubmitResult('Error: unexpected server response')
+      setSubmitResult(
+        buildFinalizeBanner({
+          httpOk: false,
+          httpError: 'unexpected server response',
+          approve: false,
+          postComment,
+          comment: null,
+        })
+      )
     } finally {
       setSubmitting(false)
     }
@@ -398,21 +469,37 @@ export function ReviewShell({
       })
       const data = await res.json()
       setSubmitResult(
-        res.ok
-          ? postComment
-            ? '✓ Approved — LGTM comment posted to GitHub'
-            : '✓ Marked as approved'
-          : `Error: ${data.error}`
+        buildFinalizeBanner({
+          httpOk: res.ok,
+          httpError: data.error,
+          approve: true,
+          postComment,
+          comment: data.comment,
+        })
       )
       if (res.ok) setSubmitted(true)
     } catch {
-      setSubmitResult('Error: unexpected server response')
+      setSubmitResult(
+        buildFinalizeBanner({
+          httpOk: false,
+          httpError: 'unexpected server response',
+          approve: true,
+          postComment,
+          comment: null,
+        })
+      )
     } finally {
       setSubmitting(false)
     }
   }
   const accepted = Object.values(decisions).filter(d => d.accepted).length
   const total = findings.length
+  const reviewMarkdown = formatReviewCommentFromUi({
+    reviewId,
+    findings,
+    decisions,
+    extras: storedResult ?? undefined,
+  })
 
   return (
     <div className="flex gap-6">
@@ -590,20 +677,29 @@ export function ReviewShell({
         {/* Submit controls */}
         {status === 'done' && total > 0 && (
           <div className="mt-6">
-            {submitted ? (
-              <p className="rounded-lg border border-green-700 bg-green-950/40 px-4 py-2.5 text-sm font-medium text-green-400">
-                {submitResult}
-              </p>
+            {submitted && submitResult ? (
+              <SubmitBannerView
+                banner={submitResult}
+                copied={copied}
+                onCopy={copyComment}
+              />
             ) : (
-              <button
-                disabled={submitting}
-                onClick={() => handleSubmit(true)}
-                className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
-              >
-                {submitting
-                  ? 'Submitting…'
-                  : `Submit + Post to GitHub (${accepted}/${total})`}
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  disabled={submitting}
+                  onClick={() => handleSubmit(true)}
+                  className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                >
+                  {submitting
+                    ? 'Submitting…'
+                    : `Submit + Post to GitHub (${accepted}/${total})`}
+                </button>
+                <CopyReviewButton
+                  markdown={reviewMarkdown}
+                  copied={copied}
+                  onCopy={copyComment}
+                />
+              </div>
             )}
           </div>
         )}
@@ -611,27 +707,40 @@ export function ReviewShell({
         {/* Clean review: no findings → Approve CTA */}
         {status === 'done' && total === 0 && (
           <div className="mt-6">
-            {submitted ? (
-              <p className="rounded-lg border border-green-700 bg-green-950/40 px-4 py-2.5 text-sm font-medium text-green-400">
-                {submitResult}
-              </p>
+            {submitted && submitResult ? (
+              <SubmitBannerView
+                banner={submitResult}
+                copied={copied}
+                onCopy={copyComment}
+              />
             ) : (
-              <button
-                disabled={submitting}
-                onClick={() => handleApprove(true)}
-                className="rounded-lg bg-green-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-600 disabled:opacity-50"
-              >
-                {submitting ? 'Approving…' : '✓ Approve PR on GitHub'}
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  disabled={submitting}
+                  onClick={() => handleApprove(true)}
+                  className="rounded-lg bg-green-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-600 disabled:opacity-50"
+                >
+                  {submitting ? 'Approving…' : '✓ Approve PR on GitHub'}
+                </button>
+                <CopyReviewButton
+                  markdown={reviewMarkdown}
+                  copied={copied}
+                  onCopy={copyComment}
+                />
+              </div>
             )}
           </div>
         )}
 
         {/* Error result (only shown when not yet submitted successfully) */}
         {submitResult && !submitted && (
-          <p className="mt-4 rounded bg-gray-900 px-4 py-2 text-sm text-red-400">
-            {submitResult}
-          </p>
+          <div className="mt-4">
+            <SubmitBannerView
+              banner={submitResult}
+              copied={copied}
+              onCopy={copyComment}
+            />
+          </div>
         )}
       </div>
 
@@ -754,6 +863,26 @@ export function ReviewShell({
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
+
+function CopyReviewButton({
+  markdown,
+  copied,
+  onCopy,
+}: {
+  markdown: string
+  copied: boolean
+  onCopy: (text: string) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onCopy(markdown)}
+      className="rounded-lg border border-gray-600 bg-gray-800 px-5 py-2.5 text-sm font-semibold text-gray-100 hover:bg-gray-700"
+    >
+      {copied ? 'Copied' : 'Copy review'}
+    </button>
+  )
+}
 
 function SiblingNavBlock({ nav }: { nav: SiblingReviewNav }) {
   const btn =
