@@ -229,7 +229,7 @@ Then open the app root and sign in with GitHub.
 
 You can add as many repos as you like. To remove a repo, click the **Remove** button in the settings list.
 
-The same Settings page has a markdown editor for team coding conventions. Those are stored in the `settings` table (`key=CONVENTIONS`) and loaded at review time. Only GitHub logins listed in `ADMIN_GITHUB_USERS` can save conventions or add/remove repos. If that variable is empty or unset, nobody can edit — there is no implicit admin.
+The same Settings page has an **Agent guidance** editor. **Global → Conventions** (`key=CONVENTIONS`) is the coding-standards doc and replaces the shipped bullet list. **Per-agent** tabs (`OVERLAY_*` keys) append extra process to one specialist at a time. Empty overlay = shipped prompt only. Only GitHub logins listed in `ADMIN_GITHUB_USERS` can save guidance or add/remove repos. If that variable is empty or unset, nobody can edit — there is no implicit admin.
 
 ---
 
@@ -294,11 +294,11 @@ Keep the secret handy — you'll paste it into GitHub in the next step.
 
 ### Optional — authentication
 
-| Variable               | Default                | Description                                                                                                                                                           |
-| ---------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ALLOWED_GITHUB_USERS` | _(empty — allows all)_ | Comma-separated list of GitHub usernames allowed to sign in. Empty means all authenticated GitHub users are accepted. **Set this in production.**                     |
-| `ADMIN_GITHUB_USERS`   | _(empty — no admins)_  | Comma-separated list of GitHub usernames allowed to edit Settings (conventions + configured repos). Empty means **nobody** can edit. **Required to change settings.** |
-| `ACCESS_PASSWORDS`     | _(empty — disabled)_   | Comma-separated list of access codes for the anonymous homepage gate (bypasses GitHub OAuth). Leave unset unless you need non-GitHub access.                          |
+| Variable               | Default                | Description                                                                                                                                                                          |
+| ---------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ALLOWED_GITHUB_USERS` | _(empty — allows all)_ | Comma-separated list of GitHub usernames allowed to sign in. Empty means all authenticated GitHub users are accepted. **Set this in production.**                                    |
+| `ADMIN_GITHUB_USERS`   | _(empty — no admins)_  | Comma-separated list of GitHub usernames allowed to edit Settings (agent overlays, conventions, configured repos). Empty means **nobody** can edit. **Required to change settings.** |
+| `ACCESS_PASSWORDS`     | _(empty — disabled)_   | Comma-separated list of access codes for the anonymous homepage gate (bypasses GitHub OAuth). Leave unset unless you need non-GitHub access.                                         |
 
 ### Optional — LLM
 

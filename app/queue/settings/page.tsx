@@ -3,12 +3,14 @@ import { createSupabaseServerClient } from '../../../src/lib/supabase/server'
 import { settingsBackLink } from '../../../src/lib/settings-back'
 import {
   DEFAULT_CONVENTIONS,
+  SETTING_KEYS,
   SettingKey,
   parseConventionsValue,
 } from '../../../src/lib/conventions'
 import { isAdminGithubUser } from '../../../src/lib/github-users'
+import { overlaysFromRows } from '../../../src/lib/overlays'
 import ReposManager from './ReposManager'
-import ConventionsEditor from './ConventionsEditor'
+import { AgentGuidance } from './AgentGuidance'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,16 +27,15 @@ export default async function QueueSettingsPage({ searchParams }: Props) {
   } = await supabase.auth.getUser()
   const isAdmin = isAdminGithubUser(user)
 
-  const [{ data: reposData }, { data: conventionsRow }] = await Promise.all([
+  const [{ data: reposData }, { data: settingsRows }] = await Promise.all([
     supabase.from('configured_repos').select('*').order('owner').order('name'),
-    supabase
-      .from('settings')
-      .select('value')
-      .eq('key', SettingKey.CONVENTIONS)
-      .maybeSingle(),
+    supabase.from('settings').select('key, value').in('key', SETTING_KEYS),
   ])
 
-  const customDoc = parseConventionsValue(conventionsRow?.value)
+  const customDoc = parseConventionsValue(
+    settingsRows?.find(row => row.key === SettingKey.CONVENTIONS)?.value
+  )
+  const overlays = overlaysFromRows(settingsRows)
 
   return (
     <div className="space-y-8">
@@ -64,16 +65,13 @@ export default async function QueueSettingsPage({ searchParams }: Props) {
       </section>
 
       <section>
-        <h2 className="mb-1 text-base font-semibold text-white">
-          Team conventions
+        <h2 className="mb-4 text-base font-semibold text-white">
+          Agent guidance
         </h2>
-        <p className="mb-4 text-sm text-gray-400">
-          Markdown the conventions agent applies at review time. If nothing is
-          saved, reviews use the built-in defaults.
-        </p>
-        <ConventionsEditor
-          initialMarkdown={customDoc ?? DEFAULT_CONVENTIONS}
-          isCustom={customDoc !== null}
+        <AgentGuidance
+          overlays={overlays}
+          conventionsMarkdown={customDoc ?? DEFAULT_CONVENTIONS}
+          conventionsIsCustom={customDoc !== null}
           isAdmin={isAdmin}
         />
       </section>

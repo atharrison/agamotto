@@ -782,4 +782,71 @@ describe('runReview (coordinator)', () => {
       })
     )
   })
+
+  it('passes per-agent overlays into domain system prompts', async () => {
+    await runReview({
+      reviewId: 'test-rev-overlay',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      mode: 'quick',
+      overlays: { PERFORMANCE: 'Flag useEffect fetch' },
+      context: makeContext(),
+    })
+    const systemPrompts = (mockModel.chat as jest.Mock).mock.calls.map(
+      call => call[2] as string
+    )
+    expect(systemPrompts.some(s => s.includes('Flag useEffect fetch'))).toBe(
+      true
+    )
+    expect(systemPrompts.some(s => s.includes('<operator-overlay>'))).toBe(true)
+  })
+
+  it('passes the context overlay to the context agent in full mode', async () => {
+    mockFullContextAgent()
+    await runReview({
+      reviewId: 'test-rev-overlay-ctx',
+      prUrl: 'https://github.com/owner/repo/pull/1',
+      mode: 'full',
+      overlays: { CONTEXT: 'Also search RIB-' },
+      context: makeContext(stubOctokit()),
+    })
+    expect(mockRunContextAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ overlay: 'Also search RIB-' })
+    )
+  })
+
+  it('does not fail CONTEXT when the context agent omits the diff', async () => {
+    mockRunContextAgent.mockResolvedValue({
+      context: {
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        prTitle: 'Feature',
+        prAuthor: 'alice',
+        prBranch: 'feat',
+        diff: '',
+        filesChanged: [],
+        fileCoverage: [],
+        externalContextCalls: 2,
+      },
+      tokensUsed: 10,
+      cost: 0,
+    })
+    mockFetchPrFiles.mockResolvedValue([
+      {
+        filename: 'foo.ts',
+        patch: '@@ -1 +1 @@\n+export const ok = true',
+      },
+    ])
+    await expect(
+      runReview({
+        reviewId: 'test-rev-no-diff',
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        mode: 'full',
+        context: makeContext(stubOctokit()),
+      })
+    ).resolves.toBeDefined()
+
+    const contexts = (mockModel.chat as jest.Mock).mock.calls.map(
+      call => call[0][0].content as string
+    )
+    expect(contexts.some(c => c.includes('export const ok = true'))).toBe(true)
+  })
 })

@@ -1,7 +1,15 @@
 /** Key-value rows in `agamotto.settings`. String values are UPPER_CASE. */
 export enum SettingKey {
   CONVENTIONS = 'CONVENTIONS',
+  OVERLAY_CONTEXT = 'OVERLAY_CONTEXT',
+  OVERLAY_CORRECTNESS = 'OVERLAY_CORRECTNESS',
+  OVERLAY_SECURITY = 'OVERLAY_SECURITY',
+  OVERLAY_PERFORMANCE = 'OVERLAY_PERFORMANCE',
+  OVERLAY_STYLE = 'OVERLAY_STYLE',
 }
+
+/** Known `settings.key` values. Use with `.in('key', SETTING_KEYS)` so selects stay bounded. */
+export const SETTING_KEYS: SettingKey[] = Object.values(SettingKey)
 
 export const MAX_CONVENTIONS_CHARS = 50_000
 

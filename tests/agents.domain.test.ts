@@ -244,6 +244,22 @@ describe('runPerformanceAgent', () => {
     const systemPrompt = chatCall[2] as string
     expect(systemPrompt).toContain('N+1')
   })
+
+  it('appends an operator overlay to the system prompt', async () => {
+    const model = makeModel(domainResultJson('PERFORMANCE'))
+    await runPerformanceAgent({
+      enrichedContext: ENRICHED_CONTEXT,
+      model,
+      overlay: 'Flag useEffect fetch on every mount',
+    })
+    const systemPrompt = (model.chat as jest.Mock).mock.calls[0][2] as string
+    expect(systemPrompt).toContain('<operator-overlay>')
+    expect(systemPrompt).toContain('Flag useEffect fetch on every mount')
+    const userPrompt = (model.chat as jest.Mock).mock.calls[0][0][0]
+      .content as string
+    expect(userPrompt).toContain('## Output format')
+    expect(userPrompt).not.toContain('<operator-overlay>')
+  })
 })
 
 // ── Style Agent ───────────────────────────────────────────────────────────────
