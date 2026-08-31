@@ -17,7 +17,7 @@ import {
   STYLE_SYSTEM,
 } from '../../../src/agents/pr-review/prompts'
 import { OverlayEditor } from './OverlayEditor'
-import ConventionsEditor from './ConventionsEditor'
+import { ConventionsEditor } from './ConventionsEditor'
 
 type GuidanceTab = OverlayAgent | SettingKey.CONVENTIONS
 

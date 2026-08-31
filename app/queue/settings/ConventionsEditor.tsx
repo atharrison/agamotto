@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { DEFAULT_CONVENTIONS } from '../../../src/lib/conventions'
 
-export default function ConventionsEditor({
+export function ConventionsEditor({
   initialMarkdown,
   isCustom,
   isAdmin,
