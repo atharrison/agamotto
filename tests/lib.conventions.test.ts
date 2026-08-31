@@ -1,5 +1,3 @@
-const mockMaybeSingle = jest.fn()
-const mockEq = jest.fn()
 const mockSelect = jest.fn()
 const mockFrom = jest.fn()
 
@@ -15,7 +13,11 @@ import {
   SettingKey,
   parseConventionsValue,
 } from '../src/lib/conventions'
-import { loadConventionsDoc } from '../src/lib/conventions-store'
+import {
+  loadConventionsDoc,
+  loadReviewSettings,
+} from '../src/lib/conventions-store'
+import { OverlayAgent } from '../src/lib/overlays'
 
 describe('parseConventionsValue', () => {
   it('returns trimmed markdown for a non-empty string', () => {
@@ -34,8 +36,10 @@ describe('parseConventionsValue', () => {
 })
 
 describe('SettingKey', () => {
-  it('stores conventions under an UPPER_CASE key', () => {
+  it('stores conventions and overlays under UPPER_CASE keys', () => {
     expect(SettingKey.CONVENTIONS).toBe('CONVENTIONS')
+    expect(SettingKey.OVERLAY_CONTEXT).toBe('OVERLAY_CONTEXT')
+    expect(SettingKey.OVERLAY_PERFORMANCE).toBe('OVERLAY_PERFORMANCE')
   })
 })
 
@@ -46,54 +50,95 @@ describe('DEFAULT_CONVENTIONS', () => {
   })
 })
 
-describe('loadConventionsDoc', () => {
+describe('loadReviewSettings', () => {
   beforeEach(() => {
-    mockMaybeSingle.mockReset()
-    mockEq.mockReset()
     mockSelect.mockReset()
     mockFrom.mockReset()
-    mockEq.mockReturnValue({ maybeSingle: mockMaybeSingle })
-    mockSelect.mockReturnValue({ eq: mockEq })
+    mockFrom.mockReturnValue({ select: mockSelect })
+  })
+
+  it('returns conventions and overlays from settings rows', async () => {
+    mockSelect.mockResolvedValue({
+      data: [
+        { key: SettingKey.CONVENTIONS, value: 'Prefer named exports' },
+        { key: SettingKey.OVERLAY_PERFORMANCE, value: 'Flag useEffect fetch' },
+      ],
+      error: null,
+    })
+
+    const settings = await loadReviewSettings()
+    expect(settings.conventionsDoc).toBe('Prefer named exports')
+    expect(settings.overlays[OverlayAgent.PERFORMANCE]).toBe(
+      'Flag useEffect fetch'
+    )
+    expect(settings.overlays[OverlayAgent.CONTEXT]).toBe('')
+    expect(mockFrom).toHaveBeenCalledWith('settings')
+    expect(mockSelect).toHaveBeenCalledWith('key, value')
+  })
+
+  it('returns undefined conventions when no row is stored', async () => {
+    mockSelect.mockResolvedValue({ data: [], error: null })
+    const settings = await loadReviewSettings()
+    expect(settings.conventionsDoc).toBeUndefined()
+    expect(settings.overlays[OverlayAgent.CONTEXT]).toBe('')
+  })
+
+  it('treats a null data payload as empty rows', async () => {
+    mockSelect.mockResolvedValue({ data: null, error: null })
+    const settings = await loadReviewSettings()
+    expect(settings.conventionsDoc).toBeUndefined()
+    expect(settings.overlays[OverlayAgent.SECURITY]).toBe('')
+  })
+
+  it('returns undefined conventions when the stored value is empty or not a string', async () => {
+    mockSelect.mockResolvedValue({
+      data: [{ key: SettingKey.CONVENTIONS, value: {} }],
+      error: null,
+    })
+    await expect(loadReviewSettings()).resolves.toMatchObject({
+      conventionsDoc: undefined,
+    })
+
+    mockSelect.mockResolvedValue({
+      data: [{ key: SettingKey.CONVENTIONS, value: '  ' }],
+      error: null,
+    })
+    await expect(loadReviewSettings()).resolves.toMatchObject({
+      conventionsDoc: undefined,
+    })
+  })
+
+  it('returns empty settings on a database error', async () => {
+    mockSelect.mockResolvedValue({
+      data: null,
+      error: { message: 'permission denied' },
+    })
+    const settings = await loadReviewSettings()
+    expect(settings.conventionsDoc).toBeUndefined()
+    expect(settings.overlays[OverlayAgent.STYLE]).toBe('')
+  })
+
+  it('returns empty settings when the client throws', async () => {
+    mockFrom.mockImplementation(() => {
+      throw new Error('no supabase')
+    })
+    const settings = await loadReviewSettings()
+    expect(settings.conventionsDoc).toBeUndefined()
+  })
+})
+
+describe('loadConventionsDoc', () => {
+  beforeEach(() => {
+    mockSelect.mockReset()
+    mockFrom.mockReset()
     mockFrom.mockReturnValue({ select: mockSelect })
   })
 
   it('returns the stored markdown when a conventions row exists', async () => {
-    mockMaybeSingle.mockResolvedValue({
-      data: { value: 'Prefer named exports' },
+    mockSelect.mockResolvedValue({
+      data: [{ key: SettingKey.CONVENTIONS, value: 'Prefer named exports' }],
       error: null,
     })
-
     await expect(loadConventionsDoc()).resolves.toBe('Prefer named exports')
-    expect(mockFrom).toHaveBeenCalledWith('settings')
-    expect(mockSelect).toHaveBeenCalledWith('value')
-    expect(mockEq).toHaveBeenCalledWith('key', SettingKey.CONVENTIONS)
-  })
-
-  it('returns undefined when no row is stored', async () => {
-    mockMaybeSingle.mockResolvedValue({ data: null, error: null })
-    await expect(loadConventionsDoc()).resolves.toBeUndefined()
-  })
-
-  it('returns undefined when the stored value is empty or not a string', async () => {
-    mockMaybeSingle.mockResolvedValue({ data: { value: {} }, error: null })
-    await expect(loadConventionsDoc()).resolves.toBeUndefined()
-
-    mockMaybeSingle.mockResolvedValue({ data: { value: '  ' }, error: null })
-    await expect(loadConventionsDoc()).resolves.toBeUndefined()
-  })
-
-  it('returns undefined on a database error', async () => {
-    mockMaybeSingle.mockResolvedValue({
-      data: null,
-      error: { message: 'permission denied' },
-    })
-    await expect(loadConventionsDoc()).resolves.toBeUndefined()
-  })
-
-  it('returns undefined when the client throws', async () => {
-    mockFrom.mockImplementation(() => {
-      throw new Error('no supabase')
-    })
-    await expect(loadConventionsDoc()).resolves.toBeUndefined()
   })
 })

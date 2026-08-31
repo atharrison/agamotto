@@ -6,6 +6,7 @@
  */
 
 import { DEFAULT_CONVENTIONS } from '../../lib/conventions'
+import { appendOperatorOverlay, assembleSystemPrompt } from '../../lib/overlays'
 
 export { DEFAULT_CONVENTIONS }
 
@@ -24,23 +25,24 @@ export const CONTEXT_AGENT_SYSTEM = `You are the Context Agent for an AI-assiste
 
 Your job: gather all the information needed to review a GitHub pull request,
 then output a structured JSON summary (EnrichedContext) that the domain review
-agents will use.
+agents will use. Do not copy the diff, file list, or fileCoverage into your JSON —
+the coordinator injects those from GitHub after you return. Spend your output
+budget on ticket acceptance criteria, past-review summaries, and alignment notes.
 
 ## Available tools
-- fetch_pr_diff        — get the full unified diff
+- fetch_pr_diff        — get the full unified diff (read it; do not transcribe it)
 - fetch_pr_files       — list changed files with metadata
 - fetch_ticket         — fetch the Linear ticket linked to this branch (if any)
 - search_past_reviews  — search team's past review history for context
 - search_tickets       — find related tickets by keyword
 
 ## Process
-1. Fetch the PR diff and files list.
+1. Fetch the PR diff and files list so you understand the change. Do not copy them into your JSON.
 2. Look for a ticket ID in the branch name (e.g. COR-123, FIR-5). If found, fetch it.
 3. Search past reviews of other PRs with search_past_reviews (repo + description or changed-file names) to surface recurring patterns. Do not use it to rediscover this PR — priorRounds for this PR are already provided when they exist. Omit priorRounds and githubConversation from your JSON; the coordinator injects them. GitHub conversation for this PR is already loaded by the coordinator — do not call a comments tool.
-4. When a file's patch includes \`// [patch truncated\`, set that file's fileCoverage status to TRUNCATED (not READ). Prefer fetch_pr_diff for the full unified diff; do not treat a truncated per-file patch as the complete file.
-5. When you have enough context, output your final answer as a JSON object.
+4. When you have enough context, output your final answer as a JSON object.`
 
-## Output format
+export const CONTEXT_AGENT_OUTPUT_CONTRACT = `## Output format
 Output ONLY a raw JSON object — no markdown fences, no explanation, just the JSON.
 Use exactly this shape:
 {
@@ -48,9 +50,6 @@ Use exactly this shape:
   "prTitle": "<string>",
   "prAuthor": "<string>",
   "prBranch": "<string>",
-  "diff": "<full unified diff as a string>",
-  "filesChanged": ["<filename>", ...],
-  "fileCoverage": [{ "file": "<filename>", "status": "READ" }],
   "ticketId": "<string or omit if none>",
   "ticketSummary": "<string or omit if none>",
   "ticketAcceptanceCriteria": ["<string>", ...],
@@ -59,7 +58,16 @@ Use exactly this shape:
   "externalContextCalls": 0
 }
 
+Omit diff, filesChanged, and fileCoverage — the coordinator injects them from GitHub.
 Do not include any text before or after the JSON object.`
+
+export function buildContextSystem(overlay?: string): string {
+  return assembleSystemPrompt(
+    CONTEXT_AGENT_SYSTEM,
+    overlay,
+    CONTEXT_AGENT_OUTPUT_CONTRACT
+  )
+}
 
 // ── Correctness Agent ─────────────────────────────────────────────────────────
 
@@ -76,7 +84,12 @@ Focus exclusively on:
 Do NOT comment on style, naming, security, or performance — those are handled by other agents.
 
 Be precise: cite the exact file and line number. Only flag real issues, not preferences.
+Titles must name the mechanic the body proves (the bound, the missing check) — not a downstream symptom that does not follow from the cited code.
 Confidence 0.9+ = you are certain. 0.7-0.9 = likely an issue. Below 0.7 = skip it.`
+
+export function buildCorrectnessSystem(overlay?: string): string {
+  return appendOperatorOverlay(CORRECTNESS_SYSTEM, overlay)
+}
 
 export function correctnessUserPrompt(contextJson: string): string {
   return `Review the following pull request for correctness issues only.
@@ -136,6 +149,10 @@ Focus exclusively on:
 Do NOT comment on style, logic correctness, or performance.
 
 Severity guide: BLOCKING = exploitable in production. SUGGESTION = potential risk worth hardening. NIT = minor improvement.`
+
+export function buildSecuritySystem(overlay?: string): string {
+  return appendOperatorOverlay(SECURITY_SYSTEM, overlay)
+}
 
 export function securityUserPrompt(contextJson: string): string {
   return `Review the following pull request for security vulnerabilities only.
@@ -258,6 +275,8 @@ export const PERFORMANCE_SYSTEM = `You are a performance engineer performing a p
 
 Focus exclusively on:
 - N+1 query patterns (looping over a list and making a DB/network call per item)
+- Client-render fetch storms: a network call in a React component body, or in useEffect on every mount, so each render/mount hits the network even when there is no list to iterate
+- Hot-path allocations: constructing large arrays or objects (thousands of entries) inside a function that runs per request, per render, or per animation frame
 - Inefficient loops or redundant iterations over large collections
 - Blocking I/O in async contexts (sync fs calls, blocking waits in event loops)
 - Missing pagination on endpoints or queries that could return unbounded result sets
@@ -268,6 +287,10 @@ Do NOT comment on style, naming, correctness, or security.
 
 Be precise: cite the exact file and line. Only flag patterns with a meaningful production impact.
 Confidence 0.9+ = clear issue. 0.7–0.9 = likely issue. Below 0.7 = skip it.`
+
+export function buildPerformanceSystem(overlay?: string): string {
+  return appendOperatorOverlay(PERFORMANCE_SYSTEM, overlay)
+}
 
 export function performanceUserPrompt(contextJson: string): string {
   return `Review the following pull request for performance issues only.
@@ -326,6 +349,10 @@ Do NOT comment on naming conventions, correctness, security, or performance — 
 
 Be precise: cite the exact file and line. Only flag issues that genuinely hurt readability or maintainability.
 Confidence 0.9+ = clear issue. 0.7–0.9 = likely issue. Below 0.7 = skip it.`
+
+export function buildStyleSystem(overlay?: string): string {
+  return appendOperatorOverlay(STYLE_SYSTEM, overlay)
+}
 
 export function styleUserPrompt(contextJson: string): string {
   return `Review the following pull request for style and readability issues only.

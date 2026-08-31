@@ -3,7 +3,7 @@ import { toToolDefinitions } from '../../harness/tools'
 import type { ReviewContext } from '../../harness/context'
 import { harnessLimits } from '../../lib/harness-limits'
 import { EnrichedContextSchema, type EnrichedContext } from './schema'
-import { CONTEXT_AGENT_SYSTEM } from './prompts'
+import { buildContextSystem } from './prompts'
 import type { PriorRound } from '../../lib/prior-rounds'
 
 type Emitter = (event: string, data: unknown) => void
@@ -15,6 +15,8 @@ export interface ContextAgentOptions {
   emit?: Emitter
   /** Earlier COMPLETE reviews of this PR — already loaded by the coordinator. */
   priorRounds?: PriorRound[]
+  /** Operator overlay from Settings. Empty = shipped system prompt only. */
+  overlay?: string
 }
 
 export interface ContextAgentResult {
@@ -48,7 +50,7 @@ Steps:
 2. Fetch the changed files list using fetch_pr_files
 3. Look for a Linear ticket ID in the branch name or PR title; if found use fetch_ticket
 4. Search past reviews of other PRs with search_past_reviews (repo + description or changed-file names)
-5. When done gathering, output your EnrichedContext JSON.`
+5. When done gathering, output your EnrichedContext JSON. Omit diff, filesChanged, and fileCoverage — the coordinator injects those from GitHub.`
 }
 
 /**
@@ -68,6 +70,7 @@ export async function runContextAgent(
     context,
     emit = () => {},
     priorRounds = [],
+    overlay,
   } = options
   const { deps, registry, dispatcher } = context
 
@@ -93,7 +96,7 @@ export async function runContextAgent(
       maxTokens,
       timeoutMs,
       reviewId,
-      systemPrompt: CONTEXT_AGENT_SYSTEM,
+      systemPrompt: buildContextSystem(overlay),
     }
   )
 

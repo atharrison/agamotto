@@ -39,6 +39,8 @@ import {
   type GithubConversationPack,
 } from '../../lib/github-conversation'
 import type { Octokit } from '@octokit/rest'
+import type { AgentOverlays } from '../../lib/overlays'
+import { OverlayAgent } from '../../lib/overlays'
 
 // ── Public interface ──────────────────────────────────────────────────────────
 
@@ -51,6 +53,8 @@ export interface RunReviewOptions {
   mode?: 'full' | 'quick'
   /** Team conventions doc from Supabase settings. Falls back to built-in defaults when absent. */
   conventionsDoc?: string
+  /** Per-agent operator overlays from Settings. Empty/absent = shipped defaults. */
+  overlays?: Partial<AgentOverlays>
   context: ReviewContext
   emit?: ReviewEmitter
 }
@@ -93,6 +97,7 @@ async function _runReview(
     context,
     emit = () => {},
     conventionsDoc,
+    overlays,
   } = options
   const { deps } = context
 
@@ -195,16 +200,11 @@ async function _runReview(
               context,
               emit,
               priorRounds,
+              overlay: overlays?.[OverlayAgent.CONTEXT],
             })
-            const pass = Boolean(
-              result.context.diff || result.context.filesChanged.length > 0
-            )
             return {
-              pass,
+              pass: true,
               payload: result,
-              error: pass
-                ? undefined
-                : 'Context agent returned empty diff and no files',
             }
           },
         })
@@ -280,7 +280,11 @@ async function _runReview(
     { 'review.id': reviewId },
     async span => {
       const results = await Promise.all([
-        runCorrectnessAgent({ enrichedContext, model: deps.model }).then(r => {
+        runCorrectnessAgent({
+          enrichedContext,
+          model: deps.model,
+          overlay: overlays?.[OverlayAgent.CORRECTNESS],
+        }).then(r => {
           emit('checkpoint', {
             stage: 'DOMAIN',
             agentName: 'correctness',
@@ -289,7 +293,11 @@ async function _runReview(
           })
           return r
         }),
-        runSecurityAgent({ enrichedContext, model: deps.model }).then(r => {
+        runSecurityAgent({
+          enrichedContext,
+          model: deps.model,
+          overlay: overlays?.[OverlayAgent.SECURITY],
+        }).then(r => {
           emit('checkpoint', {
             stage: 'DOMAIN',
             agentName: 'security',
@@ -311,7 +319,11 @@ async function _runReview(
           })
           return r
         }),
-        runPerformanceAgent({ enrichedContext, model: deps.model }).then(r => {
+        runPerformanceAgent({
+          enrichedContext,
+          model: deps.model,
+          overlay: overlays?.[OverlayAgent.PERFORMANCE],
+        }).then(r => {
           emit('checkpoint', {
             stage: 'DOMAIN',
             agentName: 'performance',
@@ -320,7 +332,11 @@ async function _runReview(
           })
           return r
         }),
-        runStyleAgent({ enrichedContext, model: deps.model }).then(r => {
+        runStyleAgent({
+          enrichedContext,
+          model: deps.model,
+          overlay: overlays?.[OverlayAgent.STYLE],
+        }).then(r => {
           emit('checkpoint', {
             stage: 'DOMAIN',
             agentName: 'style',

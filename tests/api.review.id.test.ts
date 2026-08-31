@@ -18,7 +18,7 @@ const mockRunReview = jest.fn()
 const mockCreateReviewContext = jest.fn()
 const mockGetGitHubToken = jest.fn()
 const mockGetFreshGitHubToken = jest.fn()
-const mockLoadConventionsDoc = jest.fn()
+const mockLoadReviewSettings = jest.fn()
 
 jest.mock('../src/memory/review-store', () => ({
   getReview: (...args: unknown[]) => mockGetReview(...args),
@@ -50,7 +50,7 @@ jest.mock('../src/memory/tracked-pr-store', () => ({
 }))
 
 jest.mock('../src/lib/conventions-store', () => ({
-  loadConventionsDoc: (...args: unknown[]) => mockLoadConventionsDoc(...args),
+  loadReviewSettings: (...args: unknown[]) => mockLoadReviewSettings(...args),
 }))
 
 const REVIEW_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
@@ -114,7 +114,10 @@ beforeEach(() => {
     ok: false,
     error: 'NO_SESSION',
   })
-  mockLoadConventionsDoc.mockResolvedValue(undefined)
+  mockLoadReviewSettings.mockResolvedValue({
+    conventionsDoc: undefined,
+    overlays: {},
+  })
 })
 
 describe('GET /api/review/[id] — ATH-30 stored replay', () => {
@@ -336,24 +339,28 @@ describe('GET /api/review/[id] — live pipeline', () => {
     ])
   })
 
-  it('passes stored conventions markdown into runReview', async () => {
+  it('passes stored conventions and overlays into runReview', async () => {
     mockGetReview.mockResolvedValue(null)
-    mockLoadConventionsDoc.mockResolvedValue('Prefer named exports')
+    mockLoadReviewSettings.mockResolvedValue({
+      conventionsDoc: 'Prefer named exports',
+      overlays: { PERFORMANCE: 'Flag useEffect fetch' },
+    })
 
     await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
 
-    expect(mockLoadConventionsDoc).toHaveBeenCalled()
+    expect(mockLoadReviewSettings).toHaveBeenCalled()
     expect(mockRunReview).toHaveBeenCalledWith(
       expect.objectContaining({
         reviewId: REVIEW_ID,
         conventionsDoc: 'Prefer named exports',
+        overlays: { PERFORMANCE: 'Flag useEffect fetch' },
       })
     )
   })
 
-  it('still runs the pipeline when conventions lookup fails', async () => {
+  it('still runs the pipeline when settings lookup fails', async () => {
     mockGetReview.mockResolvedValue(null)
-    mockLoadConventionsDoc.mockRejectedValue(new Error('settings down'))
+    mockLoadReviewSettings.mockRejectedValue(new Error('settings down'))
 
     await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
 
@@ -361,6 +368,7 @@ describe('GET /api/review/[id] — live pipeline', () => {
       expect.objectContaining({
         reviewId: REVIEW_ID,
         conventionsDoc: undefined,
+        overlays: undefined,
       })
     )
   })

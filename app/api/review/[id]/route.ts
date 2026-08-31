@@ -13,7 +13,7 @@ import {
   githubTokenFromFresh,
 } from '../../../../src/lib/github-auth'
 import { parsePrUrl } from '../../../../src/lib/queue'
-import { loadConventionsDoc } from '../../../../src/lib/conventions-store'
+import { loadReviewSettings } from '../../../../src/lib/conventions-store'
 import {
   ReviewStreamKind,
   resolveReviewStream,
@@ -159,16 +159,20 @@ export async function GET(
         const githubToken = githubTokenFromFresh(await getFreshGitHubToken())
         const context = createReviewContext(undefined, githubToken)
         let conventionsDoc: string | undefined
+        let overlays = undefined
         try {
-          conventionsDoc = await loadConventionsDoc()
+          const settings = await loadReviewSettings()
+          conventionsDoc = settings.conventionsDoc
+          overlays = settings.overlays
         } catch (err) {
-          console.error(`[review/${reviewId}] loadConventionsDoc failed:`, err)
+          console.error(`[review/${reviewId}] loadReviewSettings failed:`, err)
         }
         const review = await runReview({
           reviewId,
           prUrl: runPrUrl,
           mode,
           conventionsDoc,
+          overlays,
           context,
           emit: send,
         })

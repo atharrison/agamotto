@@ -117,9 +117,14 @@ export const EnrichedContextSchema = z.object({
   prTitle: z.string(),
   prAuthor: z.string(),
   prBranch: z.string(),
-  diff: z.string(),
-  filesChanged: z.array(z.string()),
-  fileCoverage: z.array(FileCoverageSchema),
+  /**
+   * Ground-truth source from GitHub, overwritten by the coordinator (ATH-50).
+   * Optional on parse so the context agent can omit them; defaults keep
+   * downstream types as `string` / arrays.
+   */
+  diff: z.string().optional().default(''),
+  filesChanged: z.array(z.string()).optional().default([]),
+  fileCoverage: z.array(FileCoverageSchema).optional().default([]),
   ticketId: z.string().optional(),
   ticketSummary: z.string().optional(),
   ticketAcceptanceCriteria: z.array(z.string()).optional(),

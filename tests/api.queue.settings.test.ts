@@ -94,7 +94,7 @@ describe('GET /api/queue/settings', () => {
 
   it('returns stored markdown and isCustom=true when a row exists', async () => {
     mockAnonClient.current = makeSupabaseClient(ADMIN_USER, {
-      data: { value: 'Prefer named exports' },
+      data: [{ key: 'CONVENTIONS', value: 'Prefer named exports' }],
       error: null,
     })
     const { GET } = await import('../app/api/queue/settings/route')
@@ -104,6 +104,7 @@ describe('GET /api/queue/settings', () => {
     expect(body.markdown).toBe('Prefer named exports')
     expect(body.isCustom).toBe(true)
     expect(body.isAdmin).toBe(true)
+    expect(body.overlays.CONTEXT).toEqual({ text: '', isCustom: false })
     expect(mockAnonClient.current.from).toHaveBeenCalledWith('settings')
   })
 
@@ -119,6 +120,7 @@ describe('GET /api/queue/settings', () => {
     const body = await res.json()
     expect(body.markdown).toBe(DEFAULT_CONVENTIONS)
     expect(body.isCustom).toBe(false)
+    expect(body.overlays.PERFORMANCE).toEqual({ text: '', isCustom: false })
   })
 
   it('returns isAdmin=false when ADMIN_GITHUB_USERS is unset', async () => {
@@ -155,6 +157,24 @@ describe('GET /api/queue/settings', () => {
     const { GET } = await import('../app/api/queue/settings/route')
     const res = await GET()
     expect(res.status).toBe(500)
+  })
+
+  it('returns stored overlays keyed by agent', async () => {
+    mockAnonClient.current = makeSupabaseClient(ADMIN_USER, {
+      data: [
+        { key: 'OVERLAY_PERFORMANCE', value: 'Flag useEffect fetch' },
+        { key: 'CONVENTIONS', value: 'Use enums' },
+      ],
+      error: null,
+    })
+    const { GET } = await import('../app/api/queue/settings/route')
+    const res = await GET()
+    const body = await res.json()
+    expect(body.overlays.PERFORMANCE).toEqual({
+      text: 'Flag useEffect fetch',
+      isCustom: true,
+    })
+    expect(body.markdown).toBe('Use enums')
   })
 })
 
@@ -333,6 +353,115 @@ describe('PUT /api/queue/settings', () => {
       makeRequest('http://localhost/api/queue/settings', {
         method: 'PUT',
         body: { markdown: 'Use enums' },
+      })
+    )
+    expect(res.status).toBe(500)
+  })
+
+  it('upserts an agent overlay and returns 200', async () => {
+    mockAnonClient.current = makeSupabaseClient(ADMIN_USER, {
+      data: { key: 'OVERLAY_PERFORMANCE', value: 'Flag useEffect fetch' },
+      error: null,
+    })
+    const { PUT } = await import('../app/api/queue/settings/route')
+    const res = await PUT(
+      makeRequest('http://localhost/api/queue/settings', {
+        method: 'PUT',
+        body: { agent: 'PERFORMANCE', overlay: 'Flag useEffect fetch' },
+      })
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.agent).toBe('PERFORMANCE')
+    expect(body.overlay).toBe('Flag useEffect fetch')
+    expect(body.isCustom).toBe(true)
+    expect(mockAnonClient.current._chain.upsert).toHaveBeenCalledWith(
+      { key: 'OVERLAY_PERFORMANCE', value: 'Flag useEffect fetch' },
+      { onConflict: 'key' }
+    )
+  })
+
+  it('returns 200 when overlay upsert succeeds with no returned row', async () => {
+    mockAnonClient.current = makeSupabaseClient(ADMIN_USER, {
+      data: null,
+      error: null,
+    })
+    const { PUT } = await import('../app/api/queue/settings/route')
+    const res = await PUT(
+      makeRequest('http://localhost/api/queue/settings', {
+        method: 'PUT',
+        body: { agent: 'CONTEXT', overlay: 'Also search RIB-' },
+      })
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.overlay).toBe('Also search RIB-')
+    expect(body.isCustom).toBe(true)
+  })
+
+  it('returns 400 when overlay exceeds the size cap', async () => {
+    mockAnonClient.current = makeSupabaseClient(ADMIN_USER, {
+      data: null,
+      error: null,
+    })
+    const { MAX_OVERLAY_CHARS } = await import('../src/lib/overlays')
+    const { PUT } = await import('../app/api/queue/settings/route')
+    const res = await PUT(
+      makeRequest('http://localhost/api/queue/settings', {
+        method: 'PUT',
+        body: {
+          agent: 'CONTEXT',
+          overlay: 'x'.repeat(MAX_OVERLAY_CHARS + 1),
+        },
+      })
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('returns 403 for overlay writes when the caller is not an admin', async () => {
+    mockAnonClient.current = makeSupabaseClient(OTHER_USER, {
+      data: null,
+      error: null,
+    })
+    const { PUT } = await import('../app/api/queue/settings/route')
+    const res = await PUT(
+      makeRequest('http://localhost/api/queue/settings', {
+        method: 'PUT',
+        body: { agent: 'CONTEXT', overlay: 'house rule' },
+      })
+    )
+    expect(res.status).toBe(403)
+    expect(mockAnonClient.current.from).not.toHaveBeenCalled()
+  })
+
+  it('allows saving an empty overlay to fall back to shipped defaults', async () => {
+    mockAnonClient.current = makeSupabaseClient(ADMIN_USER, {
+      data: { key: 'OVERLAY_STYLE', value: '' },
+      error: null,
+    })
+    const { PUT } = await import('../app/api/queue/settings/route')
+    const res = await PUT(
+      makeRequest('http://localhost/api/queue/settings', {
+        method: 'PUT',
+        body: { agent: 'STYLE', overlay: '' },
+      })
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.overlay).toBe('')
+    expect(body.isCustom).toBe(false)
+  })
+
+  it('returns 500 when overlay upsert fails', async () => {
+    mockAnonClient.current = makeSupabaseClient(ADMIN_USER, {
+      data: null,
+      error: { message: 'upsert failed' },
+    })
+    const { PUT } = await import('../app/api/queue/settings/route')
+    const res = await PUT(
+      makeRequest('http://localhost/api/queue/settings', {
+        method: 'PUT',
+        body: { agent: 'CONTEXT', overlay: 'house rule' },
       })
     )
     expect(res.status).toBe(500)

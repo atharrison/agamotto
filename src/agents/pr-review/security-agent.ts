@@ -1,11 +1,12 @@
 import type { ModelClient } from '../../harness/models'
 import type { DomainResult, EnrichedContext } from './schema'
-import { SECURITY_SYSTEM, securityUserPrompt } from './prompts'
+import { buildSecuritySystem, securityUserPrompt } from './prompts'
 import { parseDomainResult, domainContextJson } from './domain-agent-utils'
 
 export interface DomainAgentOptions {
   enrichedContext: EnrichedContext
   model: ModelClient
+  overlay?: string
 }
 
 /**
@@ -15,7 +16,7 @@ export interface DomainAgentOptions {
 export async function runSecurityAgent(
   options: DomainAgentOptions
 ): Promise<DomainResult> {
-  const { enrichedContext, model } = options
+  const { enrichedContext, model, overlay } = options
   const start = Date.now()
 
   const contextJson = domainContextJson(enrichedContext)
@@ -24,7 +25,7 @@ export async function runSecurityAgent(
   const reply = await model.chat(
     [{ role: 'user', content: userPrompt }],
     [], // no tools — single-shot
-    SECURITY_SYSTEM
+    buildSecuritySystem(overlay)
   )
 
   const durationMs = Date.now() - start

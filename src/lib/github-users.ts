@@ -52,7 +52,7 @@ export function githubLoginFromUser(user: GithubUserLike): string | undefined {
 
 /**
  * Settings/config mutations. Only GitHub logins listed in ADMIN_GITHUB_USERS
- * may edit conventions or configured repos. Empty or unset = no admins.
+ * may edit agent overlays, conventions, or configured repos. Empty or unset = no admins.
  */
 export function isAdminGithubUser(
   user: GithubUserLike,

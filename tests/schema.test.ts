@@ -95,6 +95,16 @@ describe('EnrichedContextSchema', () => {
     expect(EnrichedContextSchema.safeParse(valid).success).toBe(true)
   })
 
+  it('defaults omitted diff, filesChanged, and fileCoverage so the context agent can skip them', () => {
+    const { diff, filesChanged, fileCoverage, ...withoutSource } = valid
+    const parsed = EnrichedContextSchema.safeParse(withoutSource)
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect(parsed.data.diff).toBe('')
+    expect(parsed.data.filesChanged).toEqual([])
+    expect(parsed.data.fileCoverage).toEqual([])
+  })
+
   it('rejects invalid prUrl', () => {
     expect(
       EnrichedContextSchema.safeParse({ ...valid, prUrl: 'not-a-url' }).success
