@@ -97,7 +97,7 @@ export async function PUT(request: NextRequest) {
       { onConflict: 'key' }
     )
     .select()
-    .single()
+    .maybeSingle()
 
   if (error) {
     console.error('[PUT /api/queue/settings]', error)
@@ -107,5 +107,7 @@ export async function PUT(request: NextRequest) {
     )
   }
 
-  return NextResponse.json(conventionsPayload(data?.value, true))
+  return NextResponse.json(
+    conventionsPayload(data?.value ?? parsed.data.markdown, true)
+  )
 }

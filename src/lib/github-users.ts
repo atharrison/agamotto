@@ -46,8 +46,7 @@ export function githubLoginFromUser(user: GithubUserLike): string | undefined {
   const githubIdentity = user.identities?.find(i => i.provider === 'github')
   return (
     loginFromRaw(user.user_metadata?.user_name) ??
-    loginFromIdentityData(githubIdentity?.identity_data) ??
-    loginFromIdentityData(user.identities?.[0]?.identity_data)
+    loginFromIdentityData(githubIdentity?.identity_data)
   )
 }
 

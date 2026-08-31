@@ -38,7 +38,7 @@ describe('githubLoginFromUser', () => {
     ).toBe('atharrison')
   })
 
-  it('prefers the github identity over identities[0]', () => {
+  it('prefers the github identity over a non-github identities[0]', () => {
     expect(
       githubLoginFromUser({
         identities: [
@@ -49,12 +49,14 @@ describe('githubLoginFromUser', () => {
     ).toBe('fromgithub')
   })
 
-  it('falls back to identities[0] when no github identity is present', () => {
+  it('does not use a non-github identities[0] as the login', () => {
     expect(
       githubLoginFromUser({
-        identities: [{ identity_data: { user_name: 'FallbackLogin' } }],
+        identities: [
+          { provider: 'email', identity_data: { user_name: 'not-github' } },
+        ],
       })
-    ).toBe('fallbacklogin')
+    ).toBeUndefined()
   })
 
   it('ignores blank user_name values and non-object identity_data', () => {

@@ -6,18 +6,9 @@ import { NextRequest } from 'next/server'
 
 function makeChain(result: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {}
-  for (const m of [
-    'select',
-    'upsert',
-    'insert',
-    'update',
-    'delete',
-    'eq',
-    'order',
-  ]) {
+  for (const m of ['select', 'upsert', 'eq']) {
     chain[m] = jest.fn().mockReturnValue(chain)
   }
-  chain.single = jest.fn().mockResolvedValue(result)
   chain.maybeSingle = jest.fn().mockResolvedValue(result)
   chain.then = (resolve: (v: unknown) => unknown) =>
     Promise.resolve(result).then(resolve)
@@ -312,6 +303,24 @@ describe('PUT /api/queue/settings', () => {
     const body = await res.json()
     expect(body.markdown).toBe(DEFAULT_CONVENTIONS)
     expect(body.isCustom).toBe(false)
+  })
+
+  it('returns 200 when upsert succeeds with no returned row', async () => {
+    mockAnonClient.current = makeSupabaseClient(ADMIN_USER, {
+      data: null,
+      error: null,
+    })
+    const { PUT } = await import('../app/api/queue/settings/route')
+    const res = await PUT(
+      makeRequest('http://localhost/api/queue/settings', {
+        method: 'PUT',
+        body: { markdown: 'Use enums' },
+      })
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.markdown).toBe('Use enums')
+    expect(body.isCustom).toBe(true)
   })
 
   it('returns 500 on DB error', async () => {

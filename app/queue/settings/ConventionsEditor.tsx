@@ -19,6 +19,7 @@ export default function ConventionsEditor({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
+  // Re-sync after router.refresh() replaces server props with the saved doc.
   useEffect(() => {
     setMarkdown(initialMarkdown)
   }, [initialMarkdown])
