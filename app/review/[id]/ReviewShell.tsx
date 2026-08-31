@@ -26,6 +26,8 @@ import {
   formatReviewCommentFromUi,
 } from '../../../src/lib/review-comment-copy'
 import { findingCategories } from '../../../src/agents/pr-review/schema'
+import { formatConfidencePercent } from '../../../src/lib/confidence-bar'
+import { ConfidenceBar } from '../../components/ConfidenceBar'
 
 interface Finding {
   id: string
@@ -598,8 +600,11 @@ export function ReviewShell({
                         {findingCategories(f).length} agents agree
                       </span>
                     )}
-                    <span className="text-xs text-gray-600">
-                      {Math.round(f.confidence * 100)}% confidence
+                    <span className="inline-flex items-center gap-1.5">
+                      <ConfidenceBar confidence={f.confidence} />
+                      <span className="text-xs text-gray-500">
+                        {formatConfidencePercent(f.confidence)}
+                      </span>
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
