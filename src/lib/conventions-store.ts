@@ -1,5 +1,5 @@
 import { createSupabaseServiceRoleClient } from './supabase/server'
-import { SettingKey, parseConventionsValue } from './conventions'
+import { SETTING_KEYS, SettingKey, parseConventionsValue } from './conventions'
 import {
   EMPTY_OVERLAYS,
   overlaysFromRows,
@@ -23,7 +23,10 @@ function emptySettings(): ReviewSettings {
 export async function loadReviewSettings(): Promise<ReviewSettings> {
   try {
     const supabase = createSupabaseServiceRoleClient()
-    const { data, error } = await supabase.from('settings').select('key, value')
+    const { data, error } = await supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', SETTING_KEYS)
     if (error) {
       console.error('[loadReviewSettings]', error)
       return emptySettings()

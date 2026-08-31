@@ -1,4 +1,5 @@
 const mockSelect = jest.fn()
+const mockIn = jest.fn()
 const mockFrom = jest.fn()
 
 jest.mock('../src/lib/supabase/server', () => ({
@@ -10,6 +11,7 @@ jest.mock('../src/lib/supabase/server', () => ({
 import {
   DEFAULT_CONVENTIONS,
   MAX_CONVENTIONS_CHARS,
+  SETTING_KEYS,
   SettingKey,
   parseConventionsValue,
 } from '../src/lib/conventions'
@@ -40,6 +42,8 @@ describe('SettingKey', () => {
     expect(SettingKey.CONVENTIONS).toBe('CONVENTIONS')
     expect(SettingKey.OVERLAY_CONTEXT).toBe('OVERLAY_CONTEXT')
     expect(SettingKey.OVERLAY_PERFORMANCE).toBe('OVERLAY_PERFORMANCE')
+    expect(SETTING_KEYS).toEqual(Object.values(SettingKey))
+    expect(SETTING_KEYS).toHaveLength(6)
   })
 })
 
@@ -53,12 +57,14 @@ describe('DEFAULT_CONVENTIONS', () => {
 describe('loadReviewSettings', () => {
   beforeEach(() => {
     mockSelect.mockReset()
+    mockIn.mockReset()
     mockFrom.mockReset()
+    mockSelect.mockReturnValue({ in: mockIn })
     mockFrom.mockReturnValue({ select: mockSelect })
   })
 
   it('returns conventions and overlays from settings rows', async () => {
-    mockSelect.mockResolvedValue({
+    mockIn.mockResolvedValue({
       data: [
         { key: SettingKey.CONVENTIONS, value: 'Prefer named exports' },
         { key: SettingKey.OVERLAY_PERFORMANCE, value: 'Flag useEffect fetch' },
@@ -74,24 +80,25 @@ describe('loadReviewSettings', () => {
     expect(settings.overlays[OverlayAgent.CONTEXT]).toBe('')
     expect(mockFrom).toHaveBeenCalledWith('settings')
     expect(mockSelect).toHaveBeenCalledWith('key, value')
+    expect(mockIn).toHaveBeenCalledWith('key', SETTING_KEYS)
   })
 
   it('returns undefined conventions when no row is stored', async () => {
-    mockSelect.mockResolvedValue({ data: [], error: null })
+    mockIn.mockResolvedValue({ data: [], error: null })
     const settings = await loadReviewSettings()
     expect(settings.conventionsDoc).toBeUndefined()
     expect(settings.overlays[OverlayAgent.CONTEXT]).toBe('')
   })
 
   it('treats a null data payload as empty rows', async () => {
-    mockSelect.mockResolvedValue({ data: null, error: null })
+    mockIn.mockResolvedValue({ data: null, error: null })
     const settings = await loadReviewSettings()
     expect(settings.conventionsDoc).toBeUndefined()
     expect(settings.overlays[OverlayAgent.SECURITY]).toBe('')
   })
 
   it('returns undefined conventions when the stored value is empty or not a string', async () => {
-    mockSelect.mockResolvedValue({
+    mockIn.mockResolvedValue({
       data: [{ key: SettingKey.CONVENTIONS, value: {} }],
       error: null,
     })
@@ -99,7 +106,7 @@ describe('loadReviewSettings', () => {
       conventionsDoc: undefined,
     })
 
-    mockSelect.mockResolvedValue({
+    mockIn.mockResolvedValue({
       data: [{ key: SettingKey.CONVENTIONS, value: '  ' }],
       error: null,
     })
@@ -109,7 +116,7 @@ describe('loadReviewSettings', () => {
   })
 
   it('returns empty settings on a database error', async () => {
-    mockSelect.mockResolvedValue({
+    mockIn.mockResolvedValue({
       data: null,
       error: { message: 'permission denied' },
     })
@@ -130,12 +137,14 @@ describe('loadReviewSettings', () => {
 describe('loadConventionsDoc', () => {
   beforeEach(() => {
     mockSelect.mockReset()
+    mockIn.mockReset()
     mockFrom.mockReset()
+    mockSelect.mockReturnValue({ in: mockIn })
     mockFrom.mockReturnValue({ select: mockSelect })
   })
 
   it('returns the stored markdown when a conventions row exists', async () => {
-    mockSelect.mockResolvedValue({
+    mockIn.mockResolvedValue({
       data: [{ key: SettingKey.CONVENTIONS, value: 'Prefer named exports' }],
       error: null,
     })

@@ -64,12 +64,21 @@ export function parseOverlayValue(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+/** Strip delimiter tags so overlay text cannot close the wrapping block early. */
+export function stripOverlayDelimiters(text: string): string {
+  return text
+    .replaceAll(OPERATOR_OVERLAY_OPEN, '')
+    .replaceAll(OPERATOR_OVERLAY_CLOSE, '')
+}
+
 export function capOverlay(overlay: string | undefined): string | undefined {
   const parsed = parseOverlayValue(overlay)
   if (!parsed) return undefined
-  return parsed.length > MAX_OVERLAY_CHARS
-    ? parsed.slice(0, MAX_OVERLAY_CHARS)
-    : parsed
+  const stripped = stripOverlayDelimiters(parsed).trim()
+  if (!stripped) return undefined
+  return stripped.length > MAX_OVERLAY_CHARS
+    ? stripped.slice(0, MAX_OVERLAY_CHARS)
+    : stripped
 }
 
 /**

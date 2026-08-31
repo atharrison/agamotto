@@ -6,7 +6,7 @@ import { NextRequest } from 'next/server'
 
 function makeChain(result: { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {}
-  for (const m of ['select', 'upsert', 'eq']) {
+  for (const m of ['select', 'upsert', 'eq', 'in']) {
     chain[m] = jest.fn().mockReturnValue(chain)
   }
   chain.maybeSingle = jest.fn().mockResolvedValue(result)

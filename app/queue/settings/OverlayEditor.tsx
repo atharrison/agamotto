@@ -8,7 +8,7 @@ import {
   OVERLAY_AGENT_LABELS,
 } from '../../../src/lib/overlays'
 
-export default function OverlayEditor({
+export function OverlayEditor({
   agent,
   initialOverlay,
   isAdmin,
@@ -49,7 +49,17 @@ export default function OverlayEditor({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agent, overlay }),
       })
-      const data = await res.json()
+      let data: { error?: string; overlay?: unknown; isCustom?: boolean }
+      try {
+        data = await res.json()
+      } catch {
+        setError(
+          res.ok
+            ? 'Saved, but the response was unreadable. Refresh to confirm.'
+            : 'Failed to save overlay'
+        )
+        return
+      }
       if (!res.ok) {
         setError(data.error ?? 'Failed to save overlay')
         return

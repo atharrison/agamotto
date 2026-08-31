@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   DEFAULT_CONVENTIONS,
   MAX_CONVENTIONS_CHARS,
+  SETTING_KEYS,
   SettingKey,
   parseConventionsValue,
 } from '../../../../src/lib/conventions'
@@ -72,7 +73,10 @@ export async function GET() {
   if (!user)
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await supabase.from('settings').select('key, value')
+  const { data, error } = await supabase
+    .from('settings')
+    .select('key, value')
+    .in('key', SETTING_KEYS)
 
   if (error) {
     console.error('[GET /api/queue/settings]', error)
@@ -143,7 +147,7 @@ export async function PUT(request: NextRequest) {
       agent,
       overlay: saved ?? '',
       isCustom: saved !== null,
-      isAdmin: true,
+      isAdmin: isAdminGithubUser(user),
     })
   }
 
@@ -173,6 +177,9 @@ export async function PUT(request: NextRequest) {
   }
 
   return NextResponse.json(
-    conventionsPayload(data?.value ?? parsed.data.markdown, true)
+    conventionsPayload(
+      data?.value ?? parsed.data.markdown,
+      isAdminGithubUser(user)
+    )
   )
 }

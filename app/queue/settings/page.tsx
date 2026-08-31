@@ -3,13 +3,14 @@ import { createSupabaseServerClient } from '../../../src/lib/supabase/server'
 import { settingsBackLink } from '../../../src/lib/settings-back'
 import {
   DEFAULT_CONVENTIONS,
+  SETTING_KEYS,
   SettingKey,
   parseConventionsValue,
 } from '../../../src/lib/conventions'
 import { isAdminGithubUser } from '../../../src/lib/github-users'
 import { overlaysFromRows } from '../../../src/lib/overlays'
 import ReposManager from './ReposManager'
-import AgentGuidance from './AgentGuidance'
+import { AgentGuidance } from './AgentGuidance'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +29,7 @@ export default async function QueueSettingsPage({ searchParams }: Props) {
 
   const [{ data: reposData }, { data: settingsRows }] = await Promise.all([
     supabase.from('configured_repos').select('*').order('owner').order('name'),
-    supabase.from('settings').select('key, value'),
+    supabase.from('settings').select('key, value').in('key', SETTING_KEYS),
   ])
 
   const customDoc = parseConventionsValue(

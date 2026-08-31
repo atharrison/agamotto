@@ -8,6 +8,9 @@ export enum SettingKey {
   OVERLAY_STYLE = 'OVERLAY_STYLE',
 }
 
+/** Known `settings.key` values. Use with `.in('key', SETTING_KEYS)` so selects stay bounded. */
+export const SETTING_KEYS: SettingKey[] = Object.values(SettingKey)
+
 export const MAX_CONVENTIONS_CHARS = 50_000
 
 export const DEFAULT_CONVENTIONS = `

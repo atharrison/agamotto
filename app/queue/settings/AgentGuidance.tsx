@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { SettingKey } from '../../../src/lib/conventions'
 import {
   OverlayAgent,
   OVERLAY_AGENTS,
@@ -15,12 +16,10 @@ import {
   SECURITY_SYSTEM,
   STYLE_SYSTEM,
 } from '../../../src/agents/pr-review/prompts'
-import OverlayEditor from './OverlayEditor'
+import { OverlayEditor } from './OverlayEditor'
 import ConventionsEditor from './ConventionsEditor'
 
-const CONVENTIONS_TAB = 'CONVENTIONS' as const
-
-type GuidanceTab = OverlayAgent | typeof CONVENTIONS_TAB
+type GuidanceTab = OverlayAgent | SettingKey.CONVENTIONS
 
 const SHIPPED: Record<OverlayAgent, { preamble: string; contract?: string }> = {
   [OverlayAgent.CONTEXT]: {
@@ -40,14 +39,13 @@ const OVERLAY_DESCRIPTION =
   'Extra process appended to one specialist at review time. Empty overlay = that agent uses the shipped prompt only. Overlays cannot redefine the JSON output contract.'
 
 function tabClass(selected: boolean): string {
-  return `rounded-md px-3 py-1.5 text-sm transition ${
-    selected
-      ? 'bg-indigo-600 text-white'
-      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
-  }`
+  const base = 'rounded-md px-3 py-1.5 text-sm transition'
+  const active = 'bg-indigo-600 text-white'
+  const inactive = 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+  return `${base} ${selected ? active : inactive}`
 }
 
-export default function AgentGuidance({
+export function AgentGuidance({
   overlays,
   conventionsMarkdown,
   conventionsIsCustom,
@@ -58,8 +56,8 @@ export default function AgentGuidance({
   conventionsIsCustom: boolean
   isAdmin: boolean
 }) {
-  const [tab, setTab] = useState<GuidanceTab>(CONVENTIONS_TAB)
-  const isGlobal = tab === CONVENTIONS_TAB
+  const [tab, setTab] = useState<GuidanceTab>(SettingKey.CONVENTIONS)
+  const isGlobal = tab === SettingKey.CONVENTIONS
 
   return (
     <div className="space-y-4">
@@ -76,7 +74,7 @@ export default function AgentGuidance({
             type="button"
             role="tab"
             aria-selected={isGlobal}
-            onClick={() => setTab(CONVENTIONS_TAB)}
+            onClick={() => setTab(SettingKey.CONVENTIONS)}
             className={tabClass(isGlobal)}
           >
             Conventions
