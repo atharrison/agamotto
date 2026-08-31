@@ -5,6 +5,10 @@ import {
   clearGitHubTokenCookies,
   setGitHubTokenCookies,
 } from '../../../../src/lib/github-auth'
+import {
+  githubLoginFromUser,
+  parseGithubLogins,
+} from '../../../../src/lib/github-users'
 
 /**
  * GET /api/auth/callback
@@ -80,20 +84,12 @@ export async function GET(request: NextRequest) {
     // Leave unset (or empty) to allow all GitHub users (local dev only).
     // Normalize to lowercase — GitHub usernames are case-insensitive and the
     // OAuth provider_token may return them in varying casing.
-    const allowed = (process.env.ALLOWED_GITHUB_USERS ?? '')
-      .split(',')
-      .map(u => u.trim().toLowerCase())
-      .filter(Boolean)
+    const allowed = parseGithubLogins(process.env.ALLOWED_GITHUB_USERS)
 
     if (allowed.length > 0) {
       // Use the user from the exchange result directly — no extra network call needed.
       const user = exchangeData.session?.user
-      // Supabase stores the GitHub login in user_metadata.user_name for most
-      // providers; fall back to identities array in case the shape differs.
-      const githubLogin: string | undefined = (
-        user?.user_metadata?.user_name ??
-        user?.identities?.[0]?.identity_data?.user_name
-      )?.toLowerCase()
+      const githubLogin = githubLoginFromUser(user)
 
       // Helper: sign out and clear the provider token cookie before denying access.
       // Best-effort sign-out — if it fails, middleware blocks on the next request.

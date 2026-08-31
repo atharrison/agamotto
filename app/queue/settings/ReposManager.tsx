@@ -14,8 +14,10 @@ interface ConfiguredRepo {
 
 export default function ReposManager({
   initialRepos,
+  isAdmin,
 }: {
   initialRepos: ConfiguredRepo[]
+  isAdmin: boolean
 }) {
   const router = useRouter()
   const [input, setInput] = useState('')
@@ -80,23 +82,29 @@ export default function ReposManager({
 
   return (
     <div className="space-y-4">
-      <form onSubmit={handleAdd} className="flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="owner/repo or https://github.com/owner/repo"
-          required
-          className="flex-1 rounded-lg border border-gray-700 bg-gray-900 px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-        />
-        <button
-          type="submit"
-          disabled={adding}
-          className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50"
-        >
-          {adding ? 'Adding…' : '+ Add Repo'}
-        </button>
-      </form>
+      {isAdmin ? (
+        <form onSubmit={handleAdd} className="flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="owner/repo or https://github.com/owner/repo"
+            required
+            className="flex-1 rounded-lg border border-gray-700 bg-gray-900 px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <button
+            type="submit"
+            disabled={adding}
+            className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {adding ? 'Adding…' : '+ Add Repo'}
+          </button>
+        </form>
+      ) : (
+        <p className="text-sm text-gray-500">
+          Only admins can add or remove configured repos.
+        </p>
+      )}
 
       {error && (
         <p className="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-400">
@@ -140,13 +148,15 @@ export default function ReposManager({
                   )}
                 </div>
               </div>
-              <button
-                onClick={() => handleRemove(repo)}
-                disabled={removingId === repo.id}
-                className="ml-4 rounded-md border border-gray-800 px-2.5 py-1.5 text-xs text-gray-600 transition hover:border-red-900 hover:text-red-400 disabled:opacity-50"
-              >
-                {removingId === repo.id ? '…' : 'Remove'}
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => handleRemove(repo)}
+                  disabled={removingId === repo.id}
+                  className="ml-4 rounded-md border border-gray-800 px-2.5 py-1.5 text-xs text-gray-600 transition hover:border-red-900 hover:text-red-400 disabled:opacity-50"
+                >
+                  {removingId === repo.id ? '…' : 'Remove'}
+                </button>
+              )}
             </div>
           ))}
         </div>

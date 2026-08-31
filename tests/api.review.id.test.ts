@@ -18,6 +18,7 @@ const mockRunReview = jest.fn()
 const mockCreateReviewContext = jest.fn()
 const mockGetGitHubToken = jest.fn()
 const mockGetFreshGitHubToken = jest.fn()
+const mockLoadConventionsDoc = jest.fn()
 
 jest.mock('../src/memory/review-store', () => ({
   getReview: (...args: unknown[]) => mockGetReview(...args),
@@ -46,6 +47,10 @@ jest.mock('../src/lib/github-auth', () => ({
 
 jest.mock('../src/memory/tracked-pr-store', () => ({
   markPrReviewFailed: (...args: unknown[]) => mockMarkPrReviewFailed(...args),
+}))
+
+jest.mock('../src/lib/conventions-store', () => ({
+  loadConventionsDoc: (...args: unknown[]) => mockLoadConventionsDoc(...args),
 }))
 
 const REVIEW_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
@@ -109,6 +114,7 @@ beforeEach(() => {
     ok: false,
     error: 'NO_SESSION',
   })
+  mockLoadConventionsDoc.mockResolvedValue(undefined)
 })
 
 describe('GET /api/review/[id] — ATH-30 stored replay', () => {
@@ -328,5 +334,34 @@ describe('GET /api/review/[id] — live pipeline', () => {
     expect(eventsOfType(text, 'error')).toEqual([
       { error: 'prUrl query param is required' },
     ])
+  })
+
+  it('passes stored conventions markdown into runReview', async () => {
+    mockGetReview.mockResolvedValue(null)
+    mockLoadConventionsDoc.mockResolvedValue('Prefer named exports')
+
+    await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
+
+    expect(mockLoadConventionsDoc).toHaveBeenCalled()
+    expect(mockRunReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewId: REVIEW_ID,
+        conventionsDoc: 'Prefer named exports',
+      })
+    )
+  })
+
+  it('still runs the pipeline when conventions lookup fails', async () => {
+    mockGetReview.mockResolvedValue(null)
+    mockLoadConventionsDoc.mockRejectedValue(new Error('settings down'))
+
+    await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
+
+    expect(mockRunReview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewId: REVIEW_ID,
+        conventionsDoc: undefined,
+      })
+    )
   })
 })

@@ -3,6 +3,7 @@ import {
   createSupabaseServerClient,
   createSupabaseServiceRoleClient,
 } from '../../../../../src/lib/supabase/server'
+import { isAdminGithubUser } from '../../../../../src/lib/github-users'
 
 /**
  * DELETE /api/queue/repos/[id]
@@ -20,6 +21,12 @@ export async function DELETE(
   } = await supabase.auth.getUser()
   if (!user)
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!isAdminGithubUser(user)) {
+    return NextResponse.json(
+      { error: 'Admin access required' },
+      { status: 403 }
+    )
+  }
 
   const { id } = await params
 

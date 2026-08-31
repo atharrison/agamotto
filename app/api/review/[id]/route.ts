@@ -13,6 +13,7 @@ import {
   githubTokenFromFresh,
 } from '../../../../src/lib/github-auth'
 import { parsePrUrl } from '../../../../src/lib/queue'
+import { loadConventionsDoc } from '../../../../src/lib/conventions-store'
 import {
   ReviewStreamKind,
   resolveReviewStream,
@@ -157,10 +158,17 @@ export async function GET(
         // falls back to GITHUB_TOKEN env var if not available.
         const githubToken = githubTokenFromFresh(await getFreshGitHubToken())
         const context = createReviewContext(undefined, githubToken)
+        let conventionsDoc: string | undefined
+        try {
+          conventionsDoc = await loadConventionsDoc()
+        } catch (err) {
+          console.error(`[review/${reviewId}] loadConventionsDoc failed:`, err)
+        }
         const review = await runReview({
           reviewId,
           prUrl: runPrUrl,
           mode,
+          conventionsDoc,
           context,
           emit: send,
         })

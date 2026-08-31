@@ -5,6 +5,10 @@
  * single-shot and receive the enriched context inline.
  */
 
+import { DEFAULT_CONVENTIONS } from '../../lib/conventions'
+
+export { DEFAULT_CONVENTIONS }
+
 /** Shared note for domain agents when EnrichedContext.priorRounds is present. */
 export const PRIOR_ROUNDS_NOTE = `If priorRounds is present in the PR context, those findings came from earlier reviews of THIS same PR. Do not re-raise an issue the current diff has clearly fixed. Do flag remaining or related issues. Honor prior REJECT unless the code still warrants a new reason.`
 
@@ -176,14 +180,6 @@ Notes:
 }
 
 // ── Conventions Agent ─────────────────────────────────────────────────────────
-
-const DEFAULT_CONVENTIONS = `
-- Prefer named exports over default exports
-- Use enums with UPPER_CASE string values instead of magic strings
-- Extract shared utilities rather than duplicating logic
-- Use consistent naming: camelCase for variables/functions, PascalCase for types/classes
-- Imports ordered: built-ins → external packages → internal modules
-`.trim()
 
 export function buildConventionsSystem(conventionsDoc?: string): string {
   const doc = conventionsDoc?.trim() || DEFAULT_CONVENTIONS
