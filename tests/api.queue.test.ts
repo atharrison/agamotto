@@ -80,7 +80,11 @@ jest.mock('../src/memory/tracked-pr-store', () => ({
 // Ensure GITHUB_TOKEN is not set so the Octokit metadata fetch is always skipped
 delete process.env.GITHUB_TOKEN
 
-const MOCK_USER = { id: 'user-1', email: 'dev@example.com' }
+const MOCK_USER = {
+  id: 'user-1',
+  email: 'dev@example.com',
+  user_metadata: { user_name: 'devuser' },
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -396,8 +400,16 @@ describe('DELETE /api/queue/[id]', () => {
 // ── DELETE /api/queue/repos/[id] ─────────────────────────────────────────────
 
 describe('DELETE /api/queue/repos/[id]', () => {
+  const originalAdmin = process.env.ADMIN_GITHUB_USERS
+
   beforeEach(() => {
     jest.resetModules()
+    process.env.ADMIN_GITHUB_USERS = 'devuser'
+  })
+
+  afterAll(() => {
+    if (originalAdmin === undefined) delete process.env.ADMIN_GITHUB_USERS
+    else process.env.ADMIN_GITHUB_USERS = originalAdmin
   })
 
   it('returns 401 when not authenticated', async () => {
@@ -444,6 +456,35 @@ describe('DELETE /api/queue/repos/[id]', () => {
       params: Promise.resolve({ id: 'nonexistent' }),
     })
     expect(res.status).toBe(404)
+  })
+
+  it('returns 403 when ADMIN_GITHUB_USERS is unset', async () => {
+    delete process.env.ADMIN_GITHUB_USERS
+    mockAnonClient.current = makeSupabaseClient(MOCK_USER, {
+      data: null,
+      error: null,
+    })
+    const { DELETE } = await import('../app/api/queue/repos/[id]/route')
+    const req = makeRequest('http://localhost/api/queue/repos/r-1', {
+      method: 'DELETE',
+    })
+    const res = await DELETE(req, { params: Promise.resolve({ id: 'r-1' }) })
+    expect(res.status).toBe(403)
+  })
+
+  it('returns 403 when ADMIN_GITHUB_USERS is set and the caller is not listed', async () => {
+    process.env.ADMIN_GITHUB_USERS = 'atharrison'
+    mockAnonClient.current = makeSupabaseClient(
+      { id: 'user-2', user_metadata: { user_name: 'coworker' } },
+      { data: null, error: null }
+    )
+    const { DELETE } = await import('../app/api/queue/repos/[id]/route')
+    const req = makeRequest('http://localhost/api/queue/repos/r-1', {
+      method: 'DELETE',
+    })
+    const res = await DELETE(req, { params: Promise.resolve({ id: 'r-1' }) })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'Admin access required' })
   })
 })
 
@@ -495,8 +536,16 @@ describe('GET /api/queue/repos', () => {
 // ── POST /api/queue/repos ──────────────────────────────────────────────────────
 
 describe('POST /api/queue/repos', () => {
+  const originalAdmin = process.env.ADMIN_GITHUB_USERS
+
   beforeEach(() => {
     jest.resetModules()
+    process.env.ADMIN_GITHUB_USERS = 'devuser'
+  })
+
+  afterAll(() => {
+    if (originalAdmin === undefined) delete process.env.ADMIN_GITHUB_USERS
+    else process.env.ADMIN_GITHUB_USERS = originalAdmin
   })
 
   it('returns 401 when not authenticated', async () => {
@@ -602,5 +651,38 @@ describe('POST /api/queue/repos', () => {
     })
     const res = await POST(req)
     expect(res.status).toBe(500)
+  })
+
+  it('returns 403 when ADMIN_GITHUB_USERS is unset', async () => {
+    delete process.env.ADMIN_GITHUB_USERS
+    mockAnonClient.current = makeSupabaseClient(MOCK_USER, {
+      data: null,
+      error: null,
+    })
+    const { POST } = await import('../app/api/queue/repos/route')
+    const req = makeRequest('http://localhost/api/queue/repos', {
+      method: 'POST',
+      body: { owner: 'acme', name: 'api' },
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(403)
+    expect(mockAnonClient.current.from).not.toHaveBeenCalled()
+  })
+
+  it('returns 403 when ADMIN_GITHUB_USERS is set and the caller is not listed', async () => {
+    process.env.ADMIN_GITHUB_USERS = 'atharrison'
+    mockAnonClient.current = makeSupabaseClient(
+      { id: 'user-2', user_metadata: { user_name: 'coworker' } },
+      { data: null, error: null }
+    )
+    const { POST } = await import('../app/api/queue/repos/route')
+    const req = makeRequest('http://localhost/api/queue/repos', {
+      method: 'POST',
+      body: { owner: 'acme', name: 'api' },
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'Admin access required' })
+    expect(mockAnonClient.current.from).not.toHaveBeenCalled()
   })
 })
