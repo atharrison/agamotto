@@ -23,16 +23,18 @@ export default function OverlayEditor({
 }) {
   const router = useRouter()
   const [overlay, setOverlay] = useState(initialOverlay)
+  const [savedOverlay, setSavedOverlay] = useState(initialOverlay)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
   useEffect(() => {
     setOverlay(initialOverlay)
+    setSavedOverlay(initialOverlay)
   }, [initialOverlay])
 
-  const dirty = overlay !== initialOverlay
-  const isCustom = initialOverlay.trim().length > 0
+  const dirty = overlay !== savedOverlay
+  const isCustom = savedOverlay.trim().length > 0
   const label = OVERLAY_AGENT_LABELS[agent]
 
   async function handleSave(e: React.FormEvent) {
@@ -52,12 +54,14 @@ export default function OverlayEditor({
         setError(data.error ?? 'Failed to save overlay')
         return
       }
+      const next = typeof data.overlay === 'string' ? data.overlay : overlay
       setSuccess(
         data.isCustom
           ? `Saved ${label} overlay`
           : `Cleared — ${label} reviews will use the shipped prompt`
       )
-      setOverlay(typeof data.overlay === 'string' ? data.overlay : overlay)
+      setOverlay(next)
+      setSavedOverlay(next)
       router.refresh()
     } catch {
       setError('Network error — please try again')

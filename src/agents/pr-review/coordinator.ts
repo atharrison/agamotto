@@ -39,8 +39,7 @@ import {
   type GithubConversationPack,
 } from '../../lib/github-conversation'
 import type { Octokit } from '@octokit/rest'
-import type { AgentOverlays } from '../../lib/overlays'
-import { OverlayAgent } from '../../lib/overlays'
+import { OverlayAgent, type AgentOverlays } from '../../lib/overlays'
 
 // ── Public interface ──────────────────────────────────────────────────────────
 

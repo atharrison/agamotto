@@ -843,5 +843,10 @@ describe('runReview (coordinator)', () => {
         context: makeContext(stubOctokit()),
       })
     ).resolves.toBeDefined()
+
+    const contexts = (mockModel.chat as jest.Mock).mock.calls.map(
+      call => call[0][0].content as string
+    )
+    expect(contexts.some(c => c.includes('export const ok = true'))).toBe(true)
   })
 })

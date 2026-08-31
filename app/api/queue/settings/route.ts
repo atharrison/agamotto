@@ -135,6 +135,9 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    // PostgREST RETURNING can be empty under RLS even when the write
+    // succeeded (no error). Echo the already-validated request body —
+    // same as the conventions PUT below.
     const saved = parseOverlayValue(data?.value ?? overlay)
     return NextResponse.json({
       agent,
