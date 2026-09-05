@@ -97,6 +97,9 @@ export function editFinding(
  * Build the final ReviewSubmission from the current approval state.
  * All decisions (ACCEPT, REJECT, EDIT) are included — callers such as
  * formatGitHubComment filter out REJECTs themselves.
+ *
+ * `postToGitHub` is outcome, not intent: true only when the GitHub comment
+ * actually landed (or DRY_RUN). A failed post still saves decisions as false.
  */
 export function buildSubmission(
   state: ApprovalState,

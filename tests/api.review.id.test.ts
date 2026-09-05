@@ -246,6 +246,22 @@ describe('GET /api/review/[id] — live pipeline', () => {
     expect(mockMarkPrReady).not.toHaveBeenCalled()
   })
 
+  it('logs when parsePrUrl is null so READY is not skipped silently', async () => {
+    mockGetReview.mockResolvedValue(null)
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const badUrl = 'https://example.com/not-a-github-pr'
+
+    await getReviewStream(`?prUrl=${encodeURIComponent(badUrl)}`)
+
+    expect(mockCompleteReview).toHaveBeenCalled()
+    expect(mockMarkPrReady).not.toHaveBeenCalled()
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringMatching(/parsePrUrl returned null/),
+      badUrl
+    )
+    spy.mockRestore()
+  })
+
   it('passes a refreshed GitHub token into the review context', async () => {
     mockGetReview.mockResolvedValue(null)
     mockGetFreshGitHubToken.mockResolvedValue({

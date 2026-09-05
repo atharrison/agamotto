@@ -7,6 +7,7 @@ import {
   GITHUB_POST_FAILED_MESSAGE,
   buildFinalizeBanner,
   commentMarkdownFromResult,
+  githubCommentPosted,
   githubPostFailedReason,
 } from '../src/lib/finalize-comment'
 
@@ -55,6 +56,38 @@ describe('githubPostFailedReason', () => {
     ).toBeUndefined()
     expect(githubPostFailedReason(null)).toBeUndefined()
     expect(githubPostFailedReason({ error: '' })).toBeUndefined()
+  })
+})
+
+describe('githubCommentPosted', () => {
+  it('is false when the caller did not ask to post', () => {
+    expect(
+      githubCommentPosted(false, { id: 1, url: 'https://github.com/c/1' })
+    ).toBe(false)
+  })
+
+  it('is true when GitHub returned a comment id or url', () => {
+    expect(
+      githubCommentPosted(true, { id: 99, url: 'https://github.com/c/99' })
+    ).toBe(true)
+    expect(githubCommentPosted(true, { url: 'https://github.com/c/99' })).toBe(
+      true
+    )
+  })
+
+  it('is true for DRY_RUN', () => {
+    expect(githubCommentPosted(true, { dryRun: true, body: 'LGTM!' })).toBe(
+      true
+    )
+  })
+
+  it('is false when the post failed, was skipped, or the payload is empty', () => {
+    expect(githubCommentPosted(true, { error: 'session expired' })).toBe(false)
+    expect(
+      githubCommentPosted(true, { skipped: true, reason: 'no token' })
+    ).toBe(false)
+    expect(githubCommentPosted(true, null)).toBe(false)
+    expect(githubCommentPosted(true, {})).toBe(false)
   })
 })
 

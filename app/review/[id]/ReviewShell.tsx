@@ -19,6 +19,7 @@ import {
 import {
   FinalizeBannerTone,
   buildFinalizeBanner,
+  githubCommentPosted,
   type FinalizeBanner,
 } from '../../../src/lib/finalize-comment'
 import {
@@ -50,7 +51,11 @@ interface FindingDecision {
   editedBody?: string
 }
 
-type SubmitKind = 'save' | 'post' | 'approve'
+enum SubmitKind {
+  SAVE = 'SAVE',
+  POST = 'POST',
+  APPROVE = 'APPROVE',
+}
 type StreamStatus = 'connecting' | 'running' | 'done' | 'error'
 type PhaseStatus = 'pending' | 'running' | 'done' | 'error'
 
@@ -428,7 +433,7 @@ export function ReviewShell({
   }
 
   async function handleSubmit(postComment: boolean) {
-    setSubmitKind(postComment ? 'post' : 'save')
+    setSubmitKind(postComment ? SubmitKind.POST : SubmitKind.SAVE)
     setSubmitResult(null) // clear any previous error before retry
     try {
       const body = {
@@ -452,7 +457,9 @@ export function ReviewShell({
           rejected: data.summary?.rejected,
         })
       )
-      if (res.ok && postComment) setPostedToGitHub(true)
+      if (res.ok && githubCommentPosted(postComment, data.comment)) {
+        setPostedToGitHub(true)
+      }
     } catch {
       setSubmitResult(
         buildFinalizeBanner({
@@ -469,7 +476,7 @@ export function ReviewShell({
   }
 
   async function handleApprove(postComment: boolean) {
-    setSubmitKind(postComment ? 'approve' : 'save')
+    setSubmitKind(postComment ? SubmitKind.APPROVE : SubmitKind.SAVE)
     setSubmitResult(null) // clear any previous error before retry
     try {
       const res = await fetch(`/api/review/${reviewId}/finalize`, {
@@ -487,7 +494,9 @@ export function ReviewShell({
           comment: data.comment,
         })
       )
-      if (res.ok && postComment) setPostedToGitHub(true)
+      if (res.ok && githubCommentPosted(postComment, data.comment)) {
+        setPostedToGitHub(true)
+      }
     } catch {
       setSubmitResult(
         buildFinalizeBanner({
@@ -716,7 +725,9 @@ export function ReviewShell({
                     onClick={() => handleSubmit(false)}
                     className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
                   >
-                    {submitKind === 'save' ? 'Saving…' : 'Save findings'}
+                    {submitKind === SubmitKind.SAVE
+                      ? 'Saving…'
+                      : 'Save findings'}
                   </button>
                   <button
                     disabled={busy}
@@ -724,7 +735,9 @@ export function ReviewShell({
                     className="inline-flex items-center gap-2 rounded-lg bg-[#238636] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2ea043] disabled:opacity-50"
                   >
                     <GitHubMark className="h-4 w-4" />
-                    {submitKind === 'post' ? 'Posting…' : 'Post to GitHub'}
+                    {submitKind === SubmitKind.POST
+                      ? 'Posting…'
+                      : 'Post to GitHub'}
                   </button>
                   <CopyReviewButton
                     markdown={reviewMarkdown}
@@ -765,7 +778,7 @@ export function ReviewShell({
                     onClick={() => handleApprove(false)}
                     className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
                   >
-                    {submitKind === 'save' ? 'Saving…' : 'Save'}
+                    {submitKind === SubmitKind.SAVE ? 'Saving…' : 'Save'}
                   </button>
                   <button
                     disabled={busy}
@@ -773,7 +786,7 @@ export function ReviewShell({
                     className="inline-flex items-center gap-2 rounded-lg bg-[#238636] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2ea043] disabled:opacity-50"
                   >
                     <GitHubMark className="h-4 w-4" />
-                    {submitKind === 'approve'
+                    {submitKind === SubmitKind.APPROVE
                       ? 'Approving…'
                       : 'Approve PR on GitHub'}
                   </button>

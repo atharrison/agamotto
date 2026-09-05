@@ -193,7 +193,7 @@ export const FindingDecisionSchema = z.object({
 export type FindingDecision = z.infer<typeof FindingDecisionSchema>
 
 // ── ReviewSubmission ──────────────────────────────────────────────────────────
-// Full approval loop output — decisions + post intent.
+// Full approval loop output — decisions + whether the GitHub comment landed.
 
 export const ReviewSubmissionSchema = z.object({
   reviewId: z.string(),

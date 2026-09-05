@@ -11,6 +11,7 @@ import {
   buildSubmission,
 } from '../../../../../src/agents/pr-review/approval'
 import { createOctokit } from '../../../../../src/tools/github'
+import { githubCommentPosted } from '../../../../../src/lib/finalize-comment'
 import {
   GitHubAuthError,
   GITHUB_SESSION_EXPIRED_MESSAGE,
@@ -206,6 +207,15 @@ export async function POST(
 
   if (approve) {
     // ── Approve path: no findings, post LGTM comment ────────────────────────
+    let commentResult: unknown = null
+    if (postComment) {
+      commentResult = await postGithubPrComment({
+        sessionExpiredComment,
+        githubToken,
+        prUrlParts,
+        commentBody: formatApprovalComment(review),
+      })
+    }
     const approvalSubmission = buildSubmission(
       {
         reviewId,
@@ -214,7 +224,7 @@ export async function POST(
         submitted: true,
         result: null,
       },
-      postComment
+      githubCommentPosted(postComment, commentResult)
     )
     await memory
       .storeReview(
@@ -230,16 +240,6 @@ export async function POST(
         }
       )
       .catch(err => console.error('[finalize] storeReview failed:', err))
-
-    let commentResult: unknown = null
-    if (postComment) {
-      commentResult = await postGithubPrComment({
-        sessionExpiredComment,
-        githubToken,
-        prUrlParts,
-        commentBody: formatApprovalComment(review),
-      })
-    }
 
     try {
       await setReviewSubmission(reviewId, approvalSubmission)
@@ -275,19 +275,33 @@ export async function POST(
     }
   }
 
-  const submission = buildSubmission(
-    {
-      reviewId,
-      decisions: decisionMap,
-      submitting: false,
-      submitted: true,
-      result: null,
-    },
-    postComment
-  )
-
+  const approvalState = {
+    reviewId,
+    decisions: decisionMap,
+    submitting: false,
+    submitted: true,
+    result: null,
+  }
   const accepted = rawDecisions.filter(d => d.action !== 'REJECT').length
   const rejected = rawDecisions.filter(d => d.action === 'REJECT').length
+
+  let commentResult: unknown = null
+  if (postComment) {
+    commentResult = await postGithubPrComment({
+      sessionExpiredComment,
+      githubToken,
+      prUrlParts,
+      commentBody: formatGitHubComment(review, {
+        reviewId,
+        decisions: Object.values(decisionMap),
+        postToGitHub: false,
+      }),
+    })
+  }
+  const submission = buildSubmission(
+    approvalState,
+    githubCommentPosted(postComment, commentResult)
+  )
 
   await memory
     .storeReview(
@@ -303,16 +317,6 @@ export async function POST(
       }
     )
     .catch(err => console.error('[finalize] storeReview failed:', err))
-
-  let commentResult: unknown = null
-  if (postComment) {
-    commentResult = await postGithubPrComment({
-      sessionExpiredComment,
-      githubToken,
-      prUrlParts,
-      commentBody: formatGitHubComment(review, submission),
-    })
-  }
 
   try {
     await setReviewSubmission(reviewId, submission)

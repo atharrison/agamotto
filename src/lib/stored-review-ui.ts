@@ -118,8 +118,6 @@ export function storedReviewUiState(
     ...(result.nits ?? []),
   ]
 
-  const rec = asRecord(submission)
-
   return {
     status: 'done',
     isCachedReview: true,
@@ -135,6 +133,6 @@ export function storedReviewUiState(
       { type: 'phase', text: '⚡ Loaded saved review' },
       { type: 'phase', text: '🎉 Review complete' },
     ],
-    postedToGitHub: rec?.postToGitHub === true,
+    postedToGitHub: asRecord(submission)?.postToGitHub === true,
   }
 }

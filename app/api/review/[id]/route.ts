@@ -186,6 +186,11 @@ export async function GET(
             await markPrReady(parsed, reviewId).catch(err =>
               console.error(`[review/${reviewId}] markPrReady failed:`, err)
             )
+          } else {
+            console.error(
+              `[review/${reviewId}] parsePrUrl returned null — skipping READY:`,
+              runPrUrl
+            )
           }
         } catch (err) {
           console.error(`[review/${reviewId}] completeReview failed:`, err)
