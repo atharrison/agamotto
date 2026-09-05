@@ -14,6 +14,7 @@ const mockCreateReview = jest.fn()
 const mockCompleteReview = jest.fn()
 const mockFailReview = jest.fn()
 const mockMarkPrReviewFailed = jest.fn()
+const mockMarkPrReady = jest.fn()
 const mockRunReview = jest.fn()
 const mockCreateReviewContext = jest.fn()
 const mockGetGitHubToken = jest.fn()
@@ -47,6 +48,7 @@ jest.mock('../src/lib/github-auth', () => ({
 
 jest.mock('../src/memory/tracked-pr-store', () => ({
   markPrReviewFailed: (...args: unknown[]) => mockMarkPrReviewFailed(...args),
+  markPrReady: (...args: unknown[]) => mockMarkPrReady(...args),
 }))
 
 jest.mock('../src/lib/conventions-store', () => ({
@@ -107,6 +109,7 @@ beforeEach(() => {
   mockCompleteReview.mockResolvedValue(undefined)
   mockFailReview.mockResolvedValue(undefined)
   mockMarkPrReviewFailed.mockResolvedValue(undefined)
+  mockMarkPrReady.mockResolvedValue(undefined)
   mockRunReview.mockResolvedValue(COMPLETE_RESULT)
   mockCreateReviewContext.mockReturnValue({})
   mockGetGitHubToken.mockResolvedValue(null)
@@ -222,7 +225,25 @@ describe('GET /api/review/[id] — live pipeline', () => {
       expect.objectContaining({ reviewId: REVIEW_ID, prUrl: PR_URL })
     )
     expect(mockCompleteReview).toHaveBeenCalledWith(REVIEW_ID, COMPLETE_RESULT)
+    expect(mockMarkPrReady).toHaveBeenCalledWith(
+      expect.objectContaining({
+        owner: 'acme',
+        repo: 'app',
+        pr_number: 42,
+      }),
+      REVIEW_ID
+    )
     expect(eventsOfType(text, 'error')).toEqual([])
+  })
+
+  it('does not mark READY when completeReview fails', async () => {
+    mockGetReview.mockResolvedValue(null)
+    mockCompleteReview.mockRejectedValue(new Error('write failed'))
+
+    await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
+
+    expect(mockCompleteReview).toHaveBeenCalled()
+    expect(mockMarkPrReady).not.toHaveBeenCalled()
   })
 
   it('passes a refreshed GitHub token into the review context', async () => {

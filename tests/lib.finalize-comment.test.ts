@@ -185,6 +185,22 @@ describe('buildFinalizeBanner', () => {
     })
   })
 
+  it('shows included/excluded counts when saving without posting', () => {
+    expect(
+      buildFinalizeBanner({
+        httpOk: true,
+        approve: false,
+        postComment: false,
+        comment: null,
+        accepted: 2,
+        rejected: 1,
+      })
+    ).toEqual({
+      tone: FinalizeBannerTone.SUCCESS,
+      message: 'Saved: 2 included, 1 excluded',
+    })
+  })
+
   it('defaults accepted/rejected to zero when summary counts are omitted', () => {
     expect(
       buildFinalizeBanner({
@@ -195,7 +211,7 @@ describe('buildFinalizeBanner', () => {
       })
     ).toEqual({
       tone: FinalizeBannerTone.SUCCESS,
-      message: 'Submitted: 0 accepted, 0 rejected',
+      message: 'Saved: 0 included, 0 excluded',
     })
   })
 })

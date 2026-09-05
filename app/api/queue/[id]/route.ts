@@ -3,9 +3,10 @@ import {
   createSupabaseServerClient,
   createSupabaseServiceRoleClient,
 } from '../../../../src/lib/supabase/server'
-
-const VALID_STATUSES = ['OPEN', 'IN_REVIEW', 'REVIEWED', 'CLOSED'] as const
-type TrackedPrStatus = (typeof VALID_STATUSES)[number]
+import {
+  TrackedPrStatus,
+  isTrackedPrStatus,
+} from '../../../../src/lib/tracked-prs'
 
 /**
  * PATCH /api/queue/[id]
@@ -33,9 +34,11 @@ export async function PATCH(
   }
 
   const { status } = body
-  if (!status || !VALID_STATUSES.includes(status as TrackedPrStatus)) {
+  if (!status || !isTrackedPrStatus(status)) {
     return NextResponse.json(
-      { error: `status must be one of: ${VALID_STATUSES.join(', ')}` },
+      {
+        error: `status must be one of: ${Object.values(TrackedPrStatus).join(', ')}`,
+      },
       { status: 400 }
     )
   }

@@ -35,6 +35,10 @@ const STATUS_BADGE: Record<
     label: 'In Review',
     className: 'bg-yellow-900/50 text-yellow-300 border-yellow-800',
   },
+  [TrackedPrStatus.READY]: {
+    label: 'Ready',
+    className: 'bg-indigo-900/50 text-indigo-300 border-indigo-800',
+  },
   [TrackedPrStatus.REVIEWED]: {
     label: 'Reviewed',
     className: 'bg-green-900/50 text-green-300 border-green-800',

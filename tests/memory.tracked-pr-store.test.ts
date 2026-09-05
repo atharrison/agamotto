@@ -12,6 +12,7 @@ import { parsePrUrl } from '../src/lib/queue'
 import { TrackedPrStatus } from '../src/lib/tracked-prs'
 import {
   markPrInReview,
+  markPrReady,
   markPrReviewed,
   markPrReviewFailed,
   healStuckInReviewRows,
@@ -70,6 +71,32 @@ describe('markPrInReview', () => {
     expect(chain.upsert).toHaveBeenCalledWith(
       expect.not.objectContaining({ last_review_id: expect.anything() }),
       { onConflict: 'owner,repo,pr_number' }
+    )
+  })
+})
+
+describe('markPrReady', () => {
+  it('updates READY + last_review_id only while the row is IN_REVIEW', async () => {
+    const chain = makeChain({ data: null, error: null })
+    mockFrom.mockReturnValue(chain)
+    await markPrReady(parsed, 'rev-2')
+    expect(chain.update).toHaveBeenCalledWith({
+      status: TrackedPrStatus.READY,
+      last_review_id: 'rev-2',
+    })
+    expect(chain.eq).toHaveBeenCalledWith('owner', 'acme')
+    expect(chain.eq).toHaveBeenCalledWith('repo', 'app')
+    expect(chain.eq).toHaveBeenCalledWith('pr_number', 7)
+    expect(chain.eq).toHaveBeenCalledWith('status', TrackedPrStatus.IN_REVIEW)
+    expect(chain.update.mock.calls[0][0]).not.toHaveProperty('review_count')
+  })
+
+  it('throws when Supabase returns an error', async () => {
+    mockFrom.mockReturnValue(
+      makeChain({ data: null, error: { message: 'timeout' } })
+    )
+    await expect(markPrReady(parsed, 'rev-2')).rejects.toThrow(
+      'markPrReady failed: timeout'
     )
   })
 })
@@ -250,7 +277,7 @@ describe('healStuckInReviewRows', () => {
       error: null,
     })
     const reviews = makeChain({
-      data: [{ id: 'rev-err' }],
+      data: [{ id: 'rev-err', status: 'ERROR' }],
       error: null,
     })
     const read = makeChain({
@@ -268,10 +295,42 @@ describe('healStuckInReviewRows', () => {
 
     expect(mockFrom).toHaveBeenNthCalledWith(2, 'reviews')
     expect(reviews.in).toHaveBeenCalledWith('id', ['rev-err'])
-    expect(reviews.eq).toHaveBeenCalledWith('status', 'ERROR')
+    expect(reviews.in).toHaveBeenCalledWith('status', ['ERROR', 'COMPLETE'])
     expect(write.update).toHaveBeenCalledWith({
       status: TrackedPrStatus.OPEN,
     })
+  })
+
+  it('flips IN_REVIEW to READY when last_review_id points at a COMPLETE review', async () => {
+    const list = makeChain({
+      data: [
+        {
+          owner: 'acme',
+          repo: 'app',
+          pr_number: 7,
+          last_review_id: 'rev-done',
+          review_count: 0,
+        },
+      ],
+      error: null,
+    })
+    const reviews = makeChain({
+      data: [{ id: 'rev-done', status: 'COMPLETE' }],
+      error: null,
+    })
+    const write = makeChain({ data: null, error: null })
+    mockFrom
+      .mockReturnValueOnce(list)
+      .mockReturnValueOnce(reviews)
+      .mockReturnValueOnce(write)
+
+    await healStuckInReviewRows()
+
+    expect(write.update).toHaveBeenCalledWith({
+      status: TrackedPrStatus.READY,
+      last_review_id: 'rev-done',
+    })
+    expect(write.eq).toHaveBeenCalledWith('status', TrackedPrStatus.IN_REVIEW)
   })
 
   it('does not update when last_review_id is still RUNNING', async () => {

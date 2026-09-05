@@ -1,7 +1,11 @@
 import { parsePrUrl } from '../src/lib/queue'
 import {
   TrackedPrStatus,
+  TRACKED_PR_STATUS_VALUES,
+  SYNC_INVALIDATES_STATUSES,
+  isTrackedPrStatus,
   buildInReviewUpsert,
+  buildReadyPatch,
   buildReviewedPatch,
   buildReviewFailedPatch,
   viewReviewHref,
@@ -14,8 +18,22 @@ describe('TrackedPrStatus', () => {
   it('uses UPPER_CASE string values', () => {
     expect(TrackedPrStatus.OPEN).toBe('OPEN')
     expect(TrackedPrStatus.IN_REVIEW).toBe('IN_REVIEW')
+    expect(TrackedPrStatus.READY).toBe('READY')
     expect(TrackedPrStatus.REVIEWED).toBe('REVIEWED')
     expect(TrackedPrStatus.CLOSED).toBe('CLOSED')
+    expect(TRACKED_PR_STATUS_VALUES).toEqual([
+      'OPEN',
+      'IN_REVIEW',
+      'READY',
+      'REVIEWED',
+      'CLOSED',
+    ])
+    expect(SYNC_INVALIDATES_STATUSES).toEqual([
+      TrackedPrStatus.REVIEWED,
+      TrackedPrStatus.READY,
+    ])
+    expect(isTrackedPrStatus('READY')).toBe(true)
+    expect(isTrackedPrStatus('BOGUS')).toBe(false)
   })
 })
 
@@ -50,6 +68,17 @@ describe('buildInReviewUpsert', () => {
     const row = buildInReviewUpsert(parsed, 'rev-1')
     expect(row.status).toBe(TrackedPrStatus.IN_REVIEW)
     expect(Object.keys(row)).not.toContain('prior_status')
+  })
+})
+
+describe('buildReadyPatch', () => {
+  it('sets READY and last_review_id without touching review_count', () => {
+    const patch = buildReadyPatch('rev-9')
+    expect(patch).toEqual({
+      status: TrackedPrStatus.READY,
+      last_review_id: 'rev-9',
+    })
+    expect(patch).not.toHaveProperty('review_count')
   })
 })
 
@@ -112,6 +141,15 @@ describe('viewReviewHref', () => {
     ).toBe(`/review/${reviewId}`)
   })
 
+  it('returns /review/{id} for READY so the COMPLETE run is not treated as live', () => {
+    expect(
+      viewReviewHref({
+        status: TrackedPrStatus.READY,
+        last_review_id: reviewId,
+      })
+    ).toBe(`/review/${reviewId}`)
+  })
+
   it('returns null when last_review_id is missing', () => {
     expect(
       viewReviewHref({
@@ -156,6 +194,15 @@ describe('inProgressReviewHref', () => {
     expect(
       inProgressReviewHref({
         status: TrackedPrStatus.REVIEWED,
+        last_review_id: reviewId,
+      })
+    ).toBeNull()
+  })
+
+  it('returns null for READY (pipeline is done; spinner must stop)', () => {
+    expect(
+      inProgressReviewHref({
+        status: TrackedPrStatus.READY,
         last_review_id: reviewId,
       })
     ).toBeNull()

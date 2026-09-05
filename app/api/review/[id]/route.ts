@@ -7,7 +7,10 @@ import {
   failReview,
   getReview,
 } from '../../../../src/memory/review-store'
-import { markPrReviewFailed } from '../../../../src/memory/tracked-pr-store'
+import {
+  markPrReviewFailed,
+  markPrReady,
+} from '../../../../src/memory/tracked-pr-store'
 import {
   getFreshGitHubToken,
   githubTokenFromFresh,
@@ -176,9 +179,17 @@ export async function GET(
           context,
           emit: send,
         })
-        await completeReview(reviewId, review).catch(err =>
+        try {
+          await completeReview(reviewId, review)
+          const parsed = parsePrUrl(runPrUrl)
+          if (parsed) {
+            await markPrReady(parsed, reviewId).catch(err =>
+              console.error(`[review/${reviewId}] markPrReady failed:`, err)
+            )
+          }
+        } catch (err) {
           console.error(`[review/${reviewId}] completeReview failed:`, err)
-        )
+        }
       } catch (err) {
         console.error(`[review/${reviewId}] runReview failed:`, err)
         await failReview(reviewId, String(err)).catch(() => {})

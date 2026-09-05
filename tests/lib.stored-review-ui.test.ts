@@ -69,5 +69,60 @@ describe('storedReviewUiState', () => {
     expect(state!.findings).toEqual([])
     expect(state!.decisions).toEqual({})
     expect(state!.status).toBe('done')
+    expect(state!.postedToGitHub).toBe(false)
+  })
+
+  it('overlays Include toggles from a saved submission', () => {
+    const state = storedReviewUiState(
+      {
+        blockingIssues: [blocking, lowConfidence],
+        suggestions: [],
+        nits: [nit],
+      },
+      {
+        postToGitHub: false,
+        decisions: [
+          { findingId: 'b-1', action: 'REJECT' },
+          {
+            findingId: 'b-low',
+            action: 'EDIT',
+            editedTitle: 'rewritten',
+            editedBody: 'fixed body',
+          },
+          { findingId: 'n-1', action: 'ACCEPT' },
+        ],
+      }
+    )
+    expect(state!.decisions).toEqual({
+      'b-1': { findingId: 'b-1', accepted: false },
+      'b-low': {
+        findingId: 'b-low',
+        accepted: true,
+        editedTitle: 'rewritten',
+        editedBody: 'fixed body',
+      },
+      'n-1': { findingId: 'n-1', accepted: true },
+    })
+    expect(state!.postedToGitHub).toBe(false)
+  })
+
+  it('marks postedToGitHub when the submission was posted', () => {
+    const state = storedReviewUiState(
+      { blockingIssues: [blocking] },
+      {
+        postToGitHub: true,
+        decisions: [{ findingId: 'b-1', action: 'ACCEPT' }],
+      }
+    )
+    expect(state!.postedToGitHub).toBe(true)
+    expect(state!.decisions['b-1'].accepted).toBe(true)
+  })
+
+  it('ignores submission rows without a usable action', () => {
+    const state = storedReviewUiState(
+      { blockingIssues: [blocking] },
+      { decisions: [{ findingId: 'b-1', action: 'NOPE' }, { findingId: 1 }] }
+    )
+    expect(state!.decisions['b-1'].accepted).toBe(true)
   })
 })

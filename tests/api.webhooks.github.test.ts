@@ -30,6 +30,7 @@ function makeChain(result: { data: unknown; error: unknown }) {
     'update',
     'delete',
     'eq',
+    'in',
     'order',
   ]) {
     chain[m] = jest.fn().mockReturnValue(chain)
@@ -559,8 +560,8 @@ describe('POST /api/webhooks/github', () => {
       status: 'OPEN',
       updated_since_review: true,
     })
-    // Must filter by status=REVIEWED so only reviewed PRs get flipped
-    expect(prsChain.eq).toHaveBeenCalledWith('status', 'REVIEWED')
+    // REVIEWED and READY both go back to OPEN when new commits land
+    expect(prsChain.in).toHaveBeenCalledWith('status', ['REVIEWED', 'READY'])
     expect(prsChain.select).toHaveBeenCalledWith('id')
   })
 

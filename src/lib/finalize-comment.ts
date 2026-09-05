@@ -76,9 +76,13 @@ export function buildFinalizeBanner(opts: {
     }
   }
 
+  const accepted = opts.accepted ?? 0
+  const rejected = opts.rejected ?? 0
   return {
     tone: FinalizeBannerTone.SUCCESS,
-    message: `Submitted: ${opts.accepted ?? 0} accepted, ${opts.rejected ?? 0} rejected`,
+    message: opts.postComment
+      ? `Submitted: ${accepted} accepted, ${rejected} rejected`
+      : `Saved: ${accepted} included, ${rejected} excluded`,
     copyBody: opts.postComment ? copyBody : undefined,
   }
 }

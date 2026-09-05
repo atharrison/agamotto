@@ -46,6 +46,10 @@ const STATUS_BADGE: Record<
     label: 'In Review',
     className: 'bg-yellow-900/50 text-yellow-300 border-yellow-800',
   },
+  [TrackedPrStatus.READY]: {
+    label: 'Ready',
+    className: 'bg-indigo-900/50 text-indigo-300 border-indigo-800',
+  },
   [TrackedPrStatus.REVIEWED]: {
     label: 'Reviewed',
     className: 'bg-green-900/50 text-green-300 border-green-800',
@@ -96,6 +100,7 @@ const FILTER_TABS: { value: StatusFilter; label: string }[] = [
   { value: 'ALL', label: 'All' },
   { value: TrackedPrStatus.OPEN, label: 'Open' },
   { value: TrackedPrStatus.IN_REVIEW, label: 'In Review' },
+  { value: TrackedPrStatus.READY, label: 'Ready' },
   { value: TrackedPrStatus.REVIEWED, label: 'Reviewed' },
   { value: TrackedPrStatus.CLOSED, label: 'Closed' },
 ]
@@ -254,7 +259,9 @@ export default function QueueDisplay({
               const isRemoving = removingId === pr.id
               const isStarting = startingIds.has(pr.id)
               const isClosed = pr.status === TrackedPrStatus.CLOSED
-              const isReviewed = pr.status === TrackedPrStatus.REVIEWED
+              const isReviewed =
+                pr.status === TrackedPrStatus.REVIEWED ||
+                pr.status === TrackedPrStatus.READY
               const isOpen = pr.status === TrackedPrStatus.OPEN
               const liveHref = inProgressReviewHref(pr)
               const chips = reviewChipsForPrUrl(reviewChips, pr.pr_url)

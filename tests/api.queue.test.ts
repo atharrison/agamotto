@@ -301,7 +301,7 @@ describe('PATCH /api/queue/[id]', () => {
     const res = await PATCH(req, { params: Promise.resolve({ id: 'pr-1' }) })
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toMatch(/OPEN|IN_REVIEW|REVIEWED|CLOSED/)
+    expect(body.error).toMatch(/OPEN|IN_REVIEW|READY|REVIEWED|CLOSED/)
   })
 
   it('returns 200 with updated PR on success', async () => {

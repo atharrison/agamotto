@@ -46,6 +46,7 @@ export default async function ReviewPage({ params, searchParams }: Props) {
       prUrl={resolvedPrUrl}
       mode={mode === 'quick' ? 'quick' : 'full'}
       storedResult={storedResult}
+      storedSubmission={stored?.submission ?? null}
       siblingNav={siblingReviewNav(siblingIds, reviewId)}
     />
   )
