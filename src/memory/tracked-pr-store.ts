@@ -10,6 +10,7 @@ import type { ParsedPrUrl } from '../lib/queue'
 import {
   TrackedPrStatus,
   buildInReviewUpsert,
+  buildReadyPatch,
   buildReviewedPatch,
   buildReviewFailedPatch,
 } from '../lib/tracked-prs'
@@ -31,6 +32,25 @@ export async function markPrInReview(
       onConflict: 'owner,repo,pr_number',
     })
   if (error) throw new Error(`markPrInReview failed: ${error.message}`)
+}
+
+/**
+ * Flip IN_REVIEW → READY after the pipeline writes COMPLETE.
+ * No-op when the row is missing or no longer IN_REVIEW (close webhook, finalize).
+ * Does not increment `review_count` — that trigger is REVIEWED-only.
+ */
+export async function markPrReady(
+  parsed: ParsedPrUrl,
+  reviewId: string
+): Promise<void> {
+  const { error } = await createSupabaseServiceRoleClient()
+    .from('tracked_prs')
+    .update(buildReadyPatch(reviewId))
+    .eq('owner', parsed.owner)
+    .eq('repo', parsed.repo)
+    .eq('pr_number', parsed.pr_number)
+    .eq('status', TrackedPrStatus.IN_REVIEW)
+  if (error) throw new Error(`markPrReady failed: ${error.message}`)
 }
 
 /** Flip an existing queue row to REVIEWED. No-op if the row does not exist. */
@@ -94,8 +114,9 @@ interface StuckInReviewRow {
 }
 
 /**
- * Clear queue/history spinners when last_review_id already points at an
- * ERROR review. Live IN_REVIEW + RUNNING rows are left alone.
+ * Clear queue/history spinners when last_review_id already points at a
+ * finished review. ERROR → failed patch; COMPLETE → READY. Live IN_REVIEW +
+ * RUNNING rows are left alone.
  */
 export async function healStuckInReviewRows(): Promise<void> {
   const supabase = createSupabaseServiceRoleClient()
@@ -113,23 +134,32 @@ export async function healStuckInReviewRows(): Promise<void> {
     .filter((id): id is string => typeof id === 'string' && id.length > 0)
   if (ids.length === 0) return
 
-  const { data: failed, error: revError } = await supabase
+  const { data: finished, error: revError } = await supabase
     .from('reviews')
-    .select('id')
+    .select('id, status')
     .in('id', ids)
-    .eq('status', ReviewStatus.ERROR)
+    .in('status', [ReviewStatus.ERROR, ReviewStatus.COMPLETE])
   if (revError) {
     throw new Error(`healStuckInReviewRows failed: ${revError.message}`)
   }
-  const failedIds = new Set((failed ?? []).map(row => row.id as string))
+  const statusById = new Map(
+    (finished ?? []).map(row => [row.id as string, row.status as string])
+  )
   for (const row of stuck) {
-    if (!row.last_review_id || !failedIds.has(row.last_review_id)) continue
-    await markPrReviewFailed({
+    if (!row.last_review_id) continue
+    const reviewStatus = statusById.get(row.last_review_id)
+    if (!reviewStatus) continue
+    const parsed: ParsedPrUrl = {
       owner: row.owner,
       repo: row.repo,
       pr_number: row.pr_number,
       canonical_url: `https://github.com/${row.owner}/${row.repo}/pull/${row.pr_number}`,
-    })
+    }
+    if (reviewStatus === ReviewStatus.ERROR) {
+      await markPrReviewFailed(parsed)
+    } else if (reviewStatus === ReviewStatus.COMPLETE) {
+      await markPrReady(parsed, row.last_review_id)
+    }
   }
 }
 

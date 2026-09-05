@@ -10,7 +10,7 @@ import { healStuckInReviewRows } from '../../../src/memory/tracked-pr-store'
 /**
  * GET /api/queue
  * Returns all tracked_prs, ordered by created_at desc.
- * Optionally filter by ?status=OPEN|IN_REVIEW|REVIEWED|CLOSED
+ * Optionally filter by ?status=OPEN|IN_REVIEW|READY|REVIEWED|CLOSED
  */
 export async function GET(request: NextRequest) {
   const supabase = await createSupabaseServerClient()

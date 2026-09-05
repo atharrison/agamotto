@@ -19,6 +19,7 @@ import {
 import {
   FinalizeBannerTone,
   buildFinalizeBanner,
+  githubCommentPosted,
   type FinalizeBanner,
 } from '../../../src/lib/finalize-comment'
 import {
@@ -50,6 +51,11 @@ interface FindingDecision {
   editedBody?: string
 }
 
+enum SubmitKind {
+  SAVE = 'SAVE',
+  POST = 'POST',
+  APPROVE = 'APPROVE',
+}
 type StreamStatus = 'connecting' | 'running' | 'done' | 'error'
 type PhaseStatus = 'pending' | 'running' | 'done' | 'error'
 
@@ -162,6 +168,7 @@ interface Props {
   prUrl: string
   mode?: 'full' | 'quick'
   storedResult?: StoredReviewPayload | null
+  storedSubmission?: unknown
   siblingNav?: SiblingReviewNav | null
 }
 
@@ -170,9 +177,10 @@ export function ReviewShell({
   prUrl,
   mode = 'full',
   storedResult = null,
+  storedSubmission = null,
   siblingNav = null,
 }: Props) {
-  const hydrated = storedReviewUiState(storedResult)
+  const hydrated = storedReviewUiState(storedResult, storedSubmission)
   const [status, setStatus] = useState<StreamStatus>(
     hydrated?.status ?? 'connecting'
   )
@@ -183,8 +191,10 @@ export function ReviewShell({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [editBody, setEditBody] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
+  const [submitKind, setSubmitKind] = useState<SubmitKind | null>(null)
+  const [postedToGitHub, setPostedToGitHub] = useState(
+    hydrated?.postedToGitHub ?? false
+  )
   const [submitResult, setSubmitResult] = useState<FinalizeBanner | null>(null)
   const [copied, setCopied] = useState(false)
   const [phaseStatuses, setPhaseStatuses] = useState<
@@ -423,7 +433,7 @@ export function ReviewShell({
   }
 
   async function handleSubmit(postComment: boolean) {
-    setSubmitting(true)
+    setSubmitKind(postComment ? SubmitKind.POST : SubmitKind.SAVE)
     setSubmitResult(null) // clear any previous error before retry
     try {
       const body = {
@@ -447,7 +457,9 @@ export function ReviewShell({
           rejected: data.summary?.rejected,
         })
       )
-      if (res.ok) setSubmitted(true)
+      if (res.ok && githubCommentPosted(postComment, data.comment)) {
+        setPostedToGitHub(true)
+      }
     } catch {
       setSubmitResult(
         buildFinalizeBanner({
@@ -459,12 +471,12 @@ export function ReviewShell({
         })
       )
     } finally {
-      setSubmitting(false)
+      setSubmitKind(null)
     }
   }
 
   async function handleApprove(postComment: boolean) {
-    setSubmitting(true)
+    setSubmitKind(postComment ? SubmitKind.APPROVE : SubmitKind.SAVE)
     setSubmitResult(null) // clear any previous error before retry
     try {
       const res = await fetch(`/api/review/${reviewId}/finalize`, {
@@ -482,7 +494,9 @@ export function ReviewShell({
           comment: data.comment,
         })
       )
-      if (res.ok) setSubmitted(true)
+      if (res.ok && githubCommentPosted(postComment, data.comment)) {
+        setPostedToGitHub(true)
+      }
     } catch {
       setSubmitResult(
         buildFinalizeBanner({
@@ -494,11 +508,12 @@ export function ReviewShell({
         })
       )
     } finally {
-      setSubmitting(false)
+      setSubmitKind(null)
     }
   }
   const accepted = Object.values(decisions).filter(d => d.accepted).length
   const total = findings.length
+  const busy = submitKind !== null
   const reviewMarkdown = formatReviewCommentFromUi({
     reviewId,
     findings,
@@ -694,70 +709,105 @@ export function ReviewShell({
 
         {/* Submit controls */}
         {status === 'done' && total > 0 && (
-          <div className="mt-6">
-            {submitted && submitResult ? (
+          <div className="mt-6 space-y-3">
+            {submitResult && (
               <SubmitBannerView
                 banner={submitResult}
                 copied={copied}
                 onCopy={copyComment}
               />
-            ) : (
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  disabled={submitting}
-                  onClick={() => handleSubmit(true)}
-                  className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
-                >
-                  {submitting
-                    ? 'Submitting…'
-                    : `Submit + Post to GitHub (${accepted}/${total})`}
-                </button>
-                <CopyReviewButton
-                  markdown={reviewMarkdown}
-                  copied={copied}
-                  onCopy={copyComment}
-                />
-              </div>
+            )}
+            {!postedToGitHub && (
+              <>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    disabled={busy}
+                    onClick={() => handleSubmit(false)}
+                    className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                  >
+                    {submitKind === SubmitKind.SAVE
+                      ? 'Saving…'
+                      : 'Save findings'}
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => handleSubmit(true)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#238636] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2ea043] disabled:opacity-50"
+                  >
+                    <GitHubMark className="h-4 w-4" />
+                    {submitKind === SubmitKind.POST
+                      ? 'Posting…'
+                      : 'Post to GitHub'}
+                  </button>
+                  <CopyReviewButton
+                    markdown={reviewMarkdown}
+                    copied={copied}
+                    onCopy={copyComment}
+                  />
+                </div>
+                <p className="text-xs text-gray-500">
+                  Include toggles stay on this page until you save or post.
+                </p>
+              </>
+            )}
+            {postedToGitHub && !submitResult && (
+              <CopyReviewButton
+                markdown={reviewMarkdown}
+                copied={copied}
+                onCopy={copyComment}
+              />
             )}
           </div>
         )}
 
-        {/* Clean review: no findings → Approve CTA */}
+        {/* Clean review: no findings → save or approve on GitHub */}
         {status === 'done' && total === 0 && (
-          <div className="mt-6">
-            {submitted && submitResult ? (
+          <div className="mt-6 space-y-3">
+            {submitResult && (
               <SubmitBannerView
                 banner={submitResult}
                 copied={copied}
                 onCopy={copyComment}
               />
-            ) : (
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  disabled={submitting}
-                  onClick={() => handleApprove(true)}
-                  className="rounded-lg bg-green-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-600 disabled:opacity-50"
-                >
-                  {submitting ? 'Approving…' : '✓ Approve PR on GitHub'}
-                </button>
-                <CopyReviewButton
-                  markdown={reviewMarkdown}
-                  copied={copied}
-                  onCopy={copyComment}
-                />
-              </div>
             )}
-          </div>
-        )}
-
-        {/* Error result (only shown when not yet submitted successfully) */}
-        {submitResult && !submitted && (
-          <div className="mt-4">
-            <SubmitBannerView
-              banner={submitResult}
-              copied={copied}
-              onCopy={copyComment}
-            />
+            {!postedToGitHub && (
+              <>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    disabled={busy}
+                    onClick={() => handleApprove(false)}
+                    className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                  >
+                    {submitKind === SubmitKind.SAVE ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => handleApprove(true)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#238636] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#2ea043] disabled:opacity-50"
+                  >
+                    <GitHubMark className="h-4 w-4" />
+                    {submitKind === SubmitKind.APPROVE
+                      ? 'Approving…'
+                      : 'Approve PR on GitHub'}
+                  </button>
+                  <CopyReviewButton
+                    markdown={reviewMarkdown}
+                    copied={copied}
+                    onCopy={copyComment}
+                  />
+                </div>
+                <p className="text-xs text-gray-500">
+                  Saving records this clean review without commenting on GitHub.
+                </p>
+              </>
+            )}
+            {postedToGitHub && !submitResult && (
+              <CopyReviewButton
+                markdown={reviewMarkdown}
+                copied={copied}
+                onCopy={copyComment}
+              />
+            )}
           </div>
         )}
       </div>
@@ -881,6 +931,20 @@ export function ReviewShell({
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
+
+/** GitHub mark (Octicons). Used on the Post / Approve CTAs. */
+function GitHubMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      className={className}
+      fill="currentColor"
+    >
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8" />
+    </svg>
+  )
+}
 
 function CopyReviewButton({
   markdown,

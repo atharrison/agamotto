@@ -39,6 +39,23 @@ export function githubPostFailedReason(comment: unknown): string | undefined {
   return undefined
 }
 
+/**
+ * True only when the user asked to post and GitHub (or DRY_RUN) actually landed
+ * a comment. HTTP 200 from finalize is not enough — failed posts still save.
+ */
+export function githubCommentPosted(
+  postComment: boolean,
+  comment: unknown
+): boolean {
+  if (!postComment) return false
+  if (githubPostFailedReason(comment)) return false
+  if (!comment || typeof comment !== 'object') return false
+  const rec = comment as { id?: unknown; url?: unknown; dryRun?: unknown }
+  if (rec.dryRun === true) return true
+  if (typeof rec.id === 'number') return true
+  return typeof rec.url === 'string' && rec.url.length > 0
+}
+
 export function buildFinalizeBanner(opts: {
   httpOk: boolean
   httpError?: string
@@ -76,9 +93,13 @@ export function buildFinalizeBanner(opts: {
     }
   }
 
+  const accepted = opts.accepted ?? 0
+  const rejected = opts.rejected ?? 0
   return {
     tone: FinalizeBannerTone.SUCCESS,
-    message: `Submitted: ${opts.accepted ?? 0} accepted, ${opts.rejected ?? 0} rejected`,
+    message: opts.postComment
+      ? `Submitted: ${accepted} accepted, ${rejected} rejected`
+      : `Saved: ${accepted} included, ${rejected} excluded`,
     copyBody: opts.postComment ? copyBody : undefined,
   }
 }

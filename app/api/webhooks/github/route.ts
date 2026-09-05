@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServiceRoleClient } from '../../../../src/lib/supabase/server'
 import { verifyGitHubSignature } from '../../../../src/lib/webhook'
+import { SYNC_INVALIDATES_STATUSES } from '../../../../src/lib/tracked-prs'
 
 // Used for constant-time dummy HMAC comparisons when no repo row is found or
 // the repo has no secret, so the latency profile of those paths is
@@ -41,7 +42,7 @@ interface GitHubPrPayload {
  *   opened    → upsert (idempotent); initialises updated_since_review=false
  *   reopened  → update only; sets source=WEBHOOK, preserves updated_since_review
  *   closed    → update status=CLOSED, pr_closed_at, updated_since_review=false
- *   synchronize → flip REVIEWED → OPEN and set updated_since_review=true
+ *   synchronize → flip REVIEWED|READY → OPEN and set updated_since_review=true
  *
  * Returns 204 for unrecognised event types or ignored actions.
  * Returns 401 for any authentication/authorization failure.
@@ -235,16 +236,15 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === 'synchronize') {
-    // Only flip back PRs that are already REVIEWED; other statuses are intentional
-    // no-ops. A PR in OPEN status already has no review to invalidate. A PR in
-    // IN_REVIEW status will be evaluated against the latest commits naturally.
+    // REVIEWED and READY both mean the last run is done; new commits stale it.
+    // OPEN already has no review to invalidate. IN_REVIEW sees HEAD naturally.
     const { data: updated, error } = await service
       .from('tracked_prs')
       .update({ status: 'OPEN', updated_since_review: true })
       .eq('owner', owner)
       .eq('repo', repo)
       .eq('pr_number', prNumber)
-      .eq('status', 'REVIEWED')
+      .in('status', [...SYNC_INVALIDATES_STATUSES])
       .select('id')
 
     if (error) {
@@ -260,7 +260,7 @@ export async function POST(request: NextRequest) {
     const matched = Array.isArray(updated) ? updated.length : 0
     if (matched === 0) {
       console.warn(
-        `[POST /api/webhooks/github] synchronize event matched no REVIEWED PRs for ${owner}/${repo}#${prNumber}`
+        `[POST /api/webhooks/github] synchronize event matched no REVIEWED or READY PRs for ${owner}/${repo}#${prNumber}`
       )
     }
     return NextResponse.json({ ok: true, action, matched })

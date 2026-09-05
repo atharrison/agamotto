@@ -10,6 +10,7 @@
  */
 
 import { NextRequest } from 'next/server'
+import { buildSubmission } from '../src/agents/pr-review/approval'
 
 // ── Mock review-store ─────────────────────────────────────────────────────────
 
@@ -441,5 +442,69 @@ describe('POST /api/review/[id]/finalize — GitHub comment + tracked_prs edges'
     })
     expect(res.status).toBe(200)
     expect(mockCreateOctokit).toHaveBeenCalledWith('ghu_fresh')
+  })
+
+  it('persists postToGitHub=true only after GitHub accepts the comment', async () => {
+    mockCreateOctokit.mockReturnValue({
+      issues: { createComment: mockCreateComment },
+    })
+    mockCreateComment.mockResolvedValue({
+      data: { id: 99, html_url: 'https://github.com/comment/99' },
+    })
+    mockGetReview.mockResolvedValue(makeCompleteReview(true))
+    mockSetReviewSubmission.mockResolvedValue(undefined)
+    await callFinalize(REVIEW_ID, {
+      decisions: [{ findingId: 'f1', action: 'ACCEPT' }],
+      postComment: true,
+    })
+    expect(buildSubmission).toHaveBeenCalledWith(expect.anything(), true)
+  })
+
+  it('persists postToGitHub=false when the GitHub post fails', async () => {
+    mockCreateOctokit.mockReturnValue({
+      issues: { createComment: mockCreateComment },
+    })
+    mockCreateComment.mockRejectedValue(new Error('rate limited'))
+    mockGetReview.mockResolvedValue(makeCompleteReview(true))
+    mockSetReviewSubmission.mockResolvedValue(undefined)
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    await callFinalize(REVIEW_ID, {
+      decisions: [{ findingId: 'f1', action: 'ACCEPT' }],
+      postComment: true,
+    })
+    spy.mockRestore()
+    expect(buildSubmission).toHaveBeenCalledWith(expect.anything(), false)
+  })
+
+  it('persists postToGitHub=false when token refresh fails (save still happens)', async () => {
+    const { GitHubAuthError } = await import('../src/lib/github-auth')
+    mockGetFreshGitHubToken.mockResolvedValue({
+      ok: false,
+      error: GitHubAuthError.REFRESH_FAILED,
+    })
+    mockGetReview.mockResolvedValue(makeCompleteReview(true))
+    mockSetReviewSubmission.mockResolvedValue(undefined)
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    await callFinalize(REVIEW_ID, {
+      decisions: [{ findingId: 'f1', action: 'ACCEPT' }],
+      postComment: true,
+    })
+    spy.mockRestore()
+    expect(buildSubmission).toHaveBeenCalledWith(expect.anything(), false)
+  })
+
+  it('persists postToGitHub=true for DRY_RUN posts', async () => {
+    process.env.DRY_RUN = 'true'
+    mockCreateOctokit.mockReturnValue({
+      issues: { createComment: mockCreateComment },
+    })
+    mockGetReview.mockResolvedValue(makeCompleteReview(false))
+    mockSetReviewSubmission.mockResolvedValue(undefined)
+    await callFinalize(REVIEW_ID, {
+      approve: true,
+      decisions: [],
+      postComment: true,
+    })
+    expect(buildSubmission).toHaveBeenCalledWith(expect.anything(), true)
   })
 })
