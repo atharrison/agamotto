@@ -10,7 +10,7 @@ Deploy your own Agamotto instance from scratch in under 30 minutes.
 2. [Fork and install](#2-fork-and-install)
 3. [Supabase setup](#3-supabase-setup)
 4. [GitHub OAuth App](#4-github-oauth-app)
-5. [Railway deployment](#5-railway-deployment)
+5. [Railway deployment](#5-railway-deployment) ([custom domain](#5e-custom-domain-optional))
 6. [Configure repos in the app](#6-configure-repos-in-the-app)
 7. [GitHub webhook setup](#7-github-webhook-setup-per-repo)
 8. [Environment variable reference](#8-environment-variable-reference)
@@ -60,20 +60,17 @@ Fill in `.env` as you complete the steps below. The app will refuse to start wit
 
 ## 3. Supabase setup
 
-### 3a. Create a new project — or connect an existing one
+### 3a. Create a dedicated Supabase project
 
-> **Schema isolation**: Agamotto creates and uses its own `agamotto` schema. No tables are written to `public`. This means it is safe to add Agamotto to an existing Supabase project without disturbing other services.
+**Use a dedicated Supabase project, not an existing one.**
 
-**New project:**
+The app requires `SUPABASE_SERVICE_ROLE_KEY`, which grants full read/write access to the entire Supabase project. GitHub Actions also stores `SUPABASE_ACCESS_TOKEN` and the database password. A dedicated project scopes that blast radius to Agamotto's own data only.
+
+The free Supabase tier is enough to get started — the schema is a handful of tables. Storage grows with review history (`reviews.result` and `review_history.raw_json` are JSONB blobs of each full review), so a busy instance may outgrow the free database size limit.
 
 1. Go to [supabase.com/dashboard](https://supabase.com/dashboard) → **New project**.
 2. Choose a region close to your Railway deployment region.
 3. Save the **database password** — you'll need it for the GitHub Actions secret.
-
-**Existing project:**
-
-1. Open your project in the Supabase dashboard.
-2. Note your **project ref** (the ID in the dashboard URL) and **database password** — you'll need both for the migration step below.
 
 ### 3b. Enable the GitHub OAuth provider
 
@@ -114,20 +111,34 @@ Agamotto uses a dedicated `agamotto` schema (not `public`). Migrations are appli
 
 No local CLI setup needed. Future migrations (when you pull updates from upstream) will apply automatically on merge to `main`.
 
+### 3f. Expose the `agamotto` schema to the Data API
+
+After the migration workflow succeeds, you must expose the `agamotto` schema to PostgREST or the app will return a 500 on every page after sign-in.
+
+**Symptom if missed:** `Error: listCompleteReviewsForHistory failed: Invalid schema: agamotto`
+
+1. In the Supabase dashboard, go to **Settings → Integrations → Data API**.
+2. Under **Exposed schemas**, add `agamotto` alongside `public`.
+3. Click **Save** — PostgREST restarts automatically (~30 seconds).
+
 ---
 
 ## 4. GitHub OAuth App
 
 ### 4a. Create the OAuth App
 
-1. Go to **GitHub → Settings → Developer settings → OAuth Apps → New OAuth App** (or use [this link](https://github.com/settings/applications/new)).
+For a team deployment, create the OAuth App **under the organization** so it persists if the creating user leaves and any org admin can manage credentials. Auth behavior for end users is the same as a personal app.
+
+1. Go to `https://github.com/organizations/<your-org>/settings/applications/new` (replace `<your-org>`). For a solo deploy, a [personal OAuth App](https://github.com/settings/applications/new) still works.
 2. Fill in:
 
-   | Field                          | Value                                                                 |
-   | ------------------------------ | --------------------------------------------------------------------- |
-   | **Application name**           | `Agamotto` (or whatever you like)                                     |
-   | **Homepage URL**               | Your Railway app URL — use a placeholder for now; update after step 5 |
-   | **Authorization callback URL** | `https://<your-domain>/api/auth/callback`                             |
+   | Field                          | Value                                                                                        |
+   | ------------------------------ | -------------------------------------------------------------------------------------------- |
+   | **Application name**           | `Agamotto` (or whatever you like)                                                            |
+   | **Homepage URL**               | Your Railway app URL — use a placeholder for now; update after step 5                        |
+   | **Authorization callback URL** | The **Callback URL** from step 3b: `https://<your-project-ref>.supabase.co/auth/v1/callback` |
+
+   Do **not** set the callback to your Railway domain or `/api/auth/callback`. GitHub must send the user to Supabase; Supabase then redirects to the app.
 
 3. Click **Register application**.
 
@@ -181,10 +192,14 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 **Required for production**:
 
 ```
-NEXT_PUBLIC_SITE_URL=https://<your-railway-domain>
+NEXT_PUBLIC_SITE_URL=https://<your-app>.up.railway.app
 ```
 
+The value **must** include the scheme (`https://`). Without it, Supabase constructs a bad OAuth redirect and the user lands on `localhost:3000` (the Next.js dev default).
+
 > This overrides Railway's internal bind address (`0.0.0.0:8080`) so OAuth redirects and SSE streams resolve correctly.
+
+`NEXT_PUBLIC_` variables are embedded into the JavaScript bundle at `next build` — they are **not** injected at runtime. If you change one in Railway and the redeploy only restarts the container, the old value is still in the bundle. To force a full rebuild: Railway → **Deployments** → **Redeploy** on the latest deployment.
 
 **Recommended**:
 
@@ -205,7 +220,7 @@ In your Railway service, go to **Settings → Health Check** and set the path to
 Once Railway shows the deployment as **Active**, open:
 
 ```
-https://<your-railway-domain>/api/health
+https://<your-app>.up.railway.app/api/health
 ```
 
 You should see:
@@ -215,6 +230,45 @@ You should see:
 ```
 
 Then open the app root and sign in with GitHub.
+
+### 5e. Custom domain (optional)
+
+After Railway assigns a generated domain (e.g. `<your-app>.up.railway.app`), you can add a custom domain. When you do, **four places must be updated** — skipping the Supabase auth step is the most common failure.
+
+#### Add the custom domain in Railway
+
+Railway → your service → **Settings → Networking → Custom Domain** → enter your domain → follow the DNS instructions (typically a CNAME record pointing to Railway's domain, plus a TXT verification record).
+
+#### Update `NEXT_PUBLIC_SITE_URL`
+
+In your env vars (Railway or Doppler):
+
+```
+NEXT_PUBLIC_SITE_URL=https://your-custom-domain.com
+```
+
+Railway will rebuild and redeploy automatically on save. If the new value does not take effect, force a rebuild as described in [§5b](#5b-set-environment-variables).
+
+#### Update the GitHub OAuth App
+
+`https://github.com/organizations/<your-org>/settings/applications` → your app → **General** (for a personal app: [github.com/settings/developers](https://github.com/settings/developers)):
+
+- **Homepage URL** → `https://your-custom-domain.com`
+
+> The **Authorization callback URL** points to Supabase (`https://<ref>.supabase.co/auth/v1/callback`) — **do not change it**.
+
+#### Update Supabase authentication URL configuration
+
+This is the step most likely to be skipped. Without it, Supabase rejects the custom domain as an unauthorized redirect target and falls back to the old Railway URL.
+
+Supabase dashboard → **Authentication → URL Configuration**:
+
+1. **Site URL** → `https://your-custom-domain.com`
+2. **Redirect URLs** → add `https://your-custom-domain.com/**`
+
+Save. No redeploy needed — this takes effect immediately.
+
+**Symptom if missed:** GitHub OAuth completes successfully but redirects back to the old `*.railway.app` domain instead of your custom domain.
 
 ---
 
@@ -264,7 +318,7 @@ Keep the secret handy — you'll paste it into GitHub in the next step.
 
    | Field             | Value                                                                     |
    | ----------------- | ------------------------------------------------------------------------- |
-   | **Payload URL**   | `https://<your-railway-domain>/api/webhooks/github`                       |
+   | **Payload URL**   | `https://<your-app>.up.railway.app/api/webhooks/github`                   |
    | **Content type**  | `application/json`                                                        |
    | **Secret**        | Paste the webhook secret from step 7a                                     |
    | **Which events?** | Select **Let me select individual events** → check **Pull requests** only |
@@ -288,9 +342,9 @@ Keep the secret handy — you'll paste it into GitHub in the next step.
 
 ### Required in production
 
-| Variable               | Description                                                                                                                                                      |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_SITE_URL` | Public base URL of your deployment. Overrides Railway's internal bind address for OAuth redirects and SSE. Example: `https://agamotto-production.up.railway.app` |
+| Variable               | Description                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SITE_URL` | Public base URL of your deployment. **Must include `https://`.** Copy the generated hostname from Railway → **Settings → Networking**, or your custom domain — do not invent a `*.up.railway.app` name. Overrides the internal bind address for OAuth redirects and SSE. Baked in at `next build` — force a Railway **Redeploy** after changing it. |
 
 ### Optional — authentication
 
