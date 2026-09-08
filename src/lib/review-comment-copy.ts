@@ -113,7 +113,7 @@ export function formatReviewCommentFromUi(opts: {
   findings: UiFinding[]
   decisions: Record<string, UiFindingDecision>
   extras?: ReviewCommentExtras
-  sections?: Partial<Record<ReviewSection, UiSectionDecision>>
+  sections?: Record<ReviewSection, UiSectionDecision>
 }): string {
   const findings = opts.findings.map(toFinding)
   const extras = opts.extras ?? {}

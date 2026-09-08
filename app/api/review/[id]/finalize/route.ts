@@ -147,6 +147,8 @@ export async function POST(
     postComment,
     approve,
   } = parsed.data
+  const sectionsPatch =
+    rawSections && rawSections.length > 0 ? { sections: rawSections } : {}
 
   // ── Load PRReview from Supabase ───────────────────────────────────────────
   let reviewRow
@@ -242,9 +244,7 @@ export async function POST(
         },
         githubCommentPosted(postComment, commentResult)
       ),
-      ...(rawSections && rawSections.length > 0
-        ? { sections: rawSections }
-        : {}),
+      ...sectionsPatch,
     }
     await memory
       .storeReview(
@@ -315,9 +315,7 @@ export async function POST(
         reviewId,
         decisions: Object.values(decisionMap),
         postToGitHub: false,
-        ...(rawSections && rawSections.length > 0
-          ? { sections: rawSections }
-          : {}),
+        ...sectionsPatch,
       }),
     })
   }
@@ -326,7 +324,7 @@ export async function POST(
       approvalState,
       githubCommentPosted(postComment, commentResult)
     ),
-    ...(rawSections && rawSections.length > 0 ? { sections: rawSections } : {}),
+    ...sectionsPatch,
   }
 
   await memory

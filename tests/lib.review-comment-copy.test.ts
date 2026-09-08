@@ -8,6 +8,7 @@ import {
   formatReviewCommentFromUi,
 } from '../src/lib/review-comment-copy'
 import type { Finding } from '../src/agents/pr-review/schema'
+import { ReviewSection, hydrateSectionUi } from '../src/lib/review-sections'
 
 function finding(overrides: Partial<Finding> = {}): Finding {
   return {
@@ -197,21 +198,29 @@ describe('formatReviewCommentFromUi', () => {
   })
 
   it('omits excluded extras sections from the copied comment', () => {
+    const extras = {
+      summary: 'Overall good',
+      verdict: 'COMMENT' as const,
+      whatLooksGood: ['Tests'],
+      testingRecommendations: ['Run npm test'],
+    }
     const markdown = formatReviewCommentFromUi({
       reviewId: 'rev-1',
       findings: [finding({ id: 's1' })],
       decisions: { s1: { findingId: 's1', accepted: true } },
-      extras: {
-        summary: 'Overall good',
-        verdict: 'COMMENT',
-        whatLooksGood: ['Tests'],
-        testingRecommendations: ['Run npm test'],
-      },
+      extras,
       sections: {
-        PREAMBLE: { section: 'PREAMBLE', accepted: false },
-        WHAT_LOOKS_GOOD: { section: 'WHAT_LOOKS_GOOD', accepted: false },
-        TESTING_RECOMMENDATIONS: {
-          section: 'TESTING_RECOMMENDATIONS',
+        ...hydrateSectionUi(extras),
+        [ReviewSection.PREAMBLE]: {
+          section: ReviewSection.PREAMBLE,
+          accepted: false,
+        },
+        [ReviewSection.WHAT_LOOKS_GOOD]: {
+          section: ReviewSection.WHAT_LOOKS_GOOD,
+          accepted: false,
+        },
+        [ReviewSection.TESTING_RECOMMENDATIONS]: {
+          section: ReviewSection.TESTING_RECOMMENDATIONS,
           accepted: true,
           editedBody: 'Hit /health',
         },

@@ -123,6 +123,35 @@ describe('resolveSection', () => {
       ])
     ).toEqual({ included: true, text })
   })
+
+  it('treats blank EDIT editedBody as the default text', () => {
+    expect(
+      resolveSection(ReviewSection.PREAMBLE, text, [
+        {
+          section: ReviewSection.PREAMBLE,
+          action: 'EDIT',
+          editedBody: '   ',
+        },
+      ])
+    ).toEqual({ included: true, text })
+    expect(
+      resolveSection(ReviewSection.PREAMBLE, text, [
+        {
+          section: ReviewSection.PREAMBLE,
+          action: 'EDIT',
+          editedBody: '',
+        },
+      ])
+    ).toEqual({ included: true, text })
+  })
+
+  it('excludes ACCEPT when default text is empty', () => {
+    expect(
+      resolveSection(ReviewSection.PREAMBLE, '', [
+        { section: ReviewSection.PREAMBLE, action: 'ACCEPT' },
+      ])
+    ).toEqual({ included: false, text: '' })
+  })
 })
 
 describe('hydrateSectionUi / sectionDecisionsFromUi', () => {

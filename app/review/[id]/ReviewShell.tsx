@@ -418,6 +418,9 @@ export function ReviewShell({
           if (data.extras && typeof data.extras === 'object') {
             const extras = extrasFromReview(data.extras)
             setCommentExtras(extras)
+            // extras arrive only on done; section cards are hidden until then,
+            // so this is the first user-visible section state, not a clobber
+            // of in-progress edits. COMPLETE View Review skips EventSource.
             setSections(hydrateSectionUi(extras))
           }
         } catch {

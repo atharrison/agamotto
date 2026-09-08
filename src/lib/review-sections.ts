@@ -39,6 +39,14 @@ export type UiSectionDecision = {
   editedBody?: string
 }
 
+function sectionUiRecord(
+  make: (section: ReviewSection) => UiSectionDecision
+): Record<ReviewSection, UiSectionDecision> {
+  return Object.fromEntries(
+    REVIEW_SECTIONS.map(section => [section, make(section)])
+  ) as Record<ReviewSection, UiSectionDecision>
+}
+
 export type ResolvedSection = {
   included: boolean
   text: string
@@ -116,11 +124,13 @@ export function resolveSection(
   if (decision.action === 'REJECT') {
     return { included: false, text: defaultText }
   }
-  const text =
-    decision.action === 'EDIT' && decision.editedBody != null
+  const edited =
+    decision.action === 'EDIT' &&
+    typeof decision.editedBody === 'string' &&
+    decision.editedBody.trim().length > 0
       ? decision.editedBody
       : defaultText
-  return { included: true, text }
+  return { included: edited.length > 0, text: edited }
 }
 
 function includedFromAction(action: unknown): boolean | undefined {
@@ -133,58 +143,17 @@ function isReviewSection(value: unknown): value is ReviewSection {
   return REVIEW_SECTIONS.some(section => section === value)
 }
 
-const EMPTY_UI: Record<ReviewSection, UiSectionDecision> = {
-  [ReviewSection.PREAMBLE]: {
-    section: ReviewSection.PREAMBLE,
-    accepted: false,
-  },
-  [ReviewSection.TICKET_ALIGNMENT]: {
-    section: ReviewSection.TICKET_ALIGNMENT,
-    accepted: false,
-  },
-  [ReviewSection.WHAT_LOOKS_GOOD]: {
-    section: ReviewSection.WHAT_LOOKS_GOOD,
-    accepted: false,
-  },
-  [ReviewSection.QUESTIONS]: {
-    section: ReviewSection.QUESTIONS,
-    accepted: false,
-  },
-  [ReviewSection.TESTING_RECOMMENDATIONS]: {
-    section: ReviewSection.TESTING_RECOMMENDATIONS,
-    accepted: false,
-  },
-}
+const EMPTY_UI: Record<ReviewSection, UiSectionDecision> = sectionUiRecord(
+  section => ({ section, accepted: false })
+)
 
 function defaultSectionUi(
   extras: ReviewCommentExtras
 ): Record<ReviewSection, UiSectionDecision> {
-  return {
-    [ReviewSection.PREAMBLE]: {
-      section: ReviewSection.PREAMBLE,
-      accepted: defaultSectionText(ReviewSection.PREAMBLE, extras).length > 0,
-    },
-    [ReviewSection.TICKET_ALIGNMENT]: {
-      section: ReviewSection.TICKET_ALIGNMENT,
-      accepted:
-        defaultSectionText(ReviewSection.TICKET_ALIGNMENT, extras).length > 0,
-    },
-    [ReviewSection.WHAT_LOOKS_GOOD]: {
-      section: ReviewSection.WHAT_LOOKS_GOOD,
-      accepted:
-        defaultSectionText(ReviewSection.WHAT_LOOKS_GOOD, extras).length > 0,
-    },
-    [ReviewSection.QUESTIONS]: {
-      section: ReviewSection.QUESTIONS,
-      accepted: defaultSectionText(ReviewSection.QUESTIONS, extras).length > 0,
-    },
-    [ReviewSection.TESTING_RECOMMENDATIONS]: {
-      section: ReviewSection.TESTING_RECOMMENDATIONS,
-      accepted:
-        defaultSectionText(ReviewSection.TESTING_RECOMMENDATIONS, extras)
-          .length > 0,
-    },
-  }
+  return sectionUiRecord(section => ({
+    section,
+    accepted: defaultSectionText(section, extras).length > 0,
+  }))
 }
 
 export function hydrateSectionUi(
@@ -221,21 +190,7 @@ export function hydrateSectionUi(
     overlay.set(row.section, decision)
   }
 
-  return {
-    [ReviewSection.PREAMBLE]:
-      overlay.get(ReviewSection.PREAMBLE) ?? defaults[ReviewSection.PREAMBLE],
-    [ReviewSection.TICKET_ALIGNMENT]:
-      overlay.get(ReviewSection.TICKET_ALIGNMENT) ??
-      defaults[ReviewSection.TICKET_ALIGNMENT],
-    [ReviewSection.WHAT_LOOKS_GOOD]:
-      overlay.get(ReviewSection.WHAT_LOOKS_GOOD) ??
-      defaults[ReviewSection.WHAT_LOOKS_GOOD],
-    [ReviewSection.QUESTIONS]:
-      overlay.get(ReviewSection.QUESTIONS) ?? defaults[ReviewSection.QUESTIONS],
-    [ReviewSection.TESTING_RECOMMENDATIONS]:
-      overlay.get(ReviewSection.TESTING_RECOMMENDATIONS) ??
-      defaults[ReviewSection.TESTING_RECOMMENDATIONS],
-  }
+  return sectionUiRecord(section => overlay.get(section) ?? defaults[section])
 }
 
 export function sectionReviewAction(decision: {
