@@ -290,6 +290,53 @@ describe('GET /api/review/[id] — live pipeline', () => {
     expect(mockRunReview).toHaveBeenCalled()
   })
 
+  it('replays after waiting for an in-flight auto-start pipeline', async () => {
+    let release: (value: unknown) => void = () => {}
+    mockRunReview.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          release = resolve
+        })
+    )
+    mockGetReview
+      .mockResolvedValueOnce({
+        id: REVIEW_ID,
+        pr_url: PR_URL,
+        status: 'RUNNING',
+        result: null,
+      })
+      .mockResolvedValueOnce({
+        ...completeRow(),
+      })
+
+    const { executeReviewPipeline } =
+      await import('../src/lib/execute-review-pipeline')
+    const pipeline = executeReviewPipeline({
+      reviewId: REVIEW_ID,
+      prUrl: PR_URL,
+      mode: 'full',
+      githubToken: 'ghu_author',
+      emit: () => {},
+    })
+    for (let i = 0; i < 20 && mockRunReview.mock.calls.length === 0; i++) {
+      await Promise.resolve()
+    }
+
+    const streamPromise = getReviewStream(
+      `?prUrl=${encodeURIComponent(PR_URL)}`
+    )
+    release(COMPLETE_RESULT)
+    await pipeline
+    const { text } = await streamPromise
+
+    expect(mockRunReview).toHaveBeenCalledTimes(1)
+    expect(
+      eventsOfType(text, 'connected').some(
+        e => (e as { cached?: boolean }).cached === true
+      )
+    ).toBe(true)
+  })
+
   it('emits an init error when createReview fails', async () => {
     mockGetReview.mockResolvedValue(null)
     mockCreateReview.mockRejectedValue(new Error('insert failed'))

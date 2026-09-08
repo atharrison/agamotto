@@ -1,0 +1,64 @@
+/**
+ * ATH-58 webhook auto-start: first `opened` pass only.
+ * Completes to READY — never posts. Diff fetch uses GITHUB_TOKEN.
+ */
+import { v4 as uuidv4 } from 'uuid'
+import {
+  AutoStartDecision,
+  decideAutoStart,
+  githubTokenFromEnv,
+} from './auto-start'
+import { isAllowedGithubLogin } from './github-users'
+import { executeReviewPipeline } from './execute-review-pipeline'
+import type { ReviewPipelineEmit } from './execute-review-pipeline'
+import { beginTrackedReview } from '../memory/begin-tracked-review'
+
+/** Webhook auto-start has no SSE client — findings persist via completeReview. */
+export const discardReviewEmit: ReviewPipelineEmit = () => {}
+
+export type TryAutoStartOpenedReviewOpts = {
+  prUrl: string
+  prAuthor: string | null
+  existingStatus: string | null
+  lastReviewId: string | null
+}
+
+export async function tryAutoStartOpenedReview(
+  opts: TryAutoStartOpenedReviewOpts
+): Promise<AutoStartDecision> {
+  const githubToken = githubTokenFromEnv()
+  const authorAllowed = isAllowedGithubLogin(
+    opts.prAuthor,
+    process.env.ALLOWED_GITHUB_USERS
+  )
+
+  const decision = decideAutoStart({
+    action: 'opened',
+    autoStartEnabled: true,
+    existingStatus: opts.existingStatus,
+    lastReviewId: opts.lastReviewId,
+    authorLogin: opts.prAuthor,
+    authorAllowed,
+    hasGithubToken: githubToken !== null,
+  })
+
+  if (decision !== AutoStartDecision.START || !githubToken) {
+    if (decision !== AutoStartDecision.START) {
+      console.info(`[auto-start] skip ${opts.prUrl}: ${decision}`)
+    }
+    return decision
+  }
+
+  const reviewId = uuidv4()
+  await beginTrackedReview(reviewId, opts.prUrl, 'full')
+  void executeReviewPipeline({
+    reviewId,
+    prUrl: opts.prUrl,
+    mode: 'full',
+    githubToken,
+    emit: discardReviewEmit,
+  }).catch(err => {
+    console.error(`[auto-start] pipeline failed for ${opts.prUrl}:`, err)
+  })
+  return AutoStartDecision.START
+}
