@@ -120,6 +120,7 @@ describe('formatReviewCommentFromUi', () => {
     })
     expect(markdown).toContain('Null deref')
     expect(markdown).toContain('src/foo.ts:12')
+    expect(markdown).toContain('80% confidence')
     expect(markdown).not.toContain('Skip me')
   })
 

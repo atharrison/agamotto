@@ -154,6 +154,31 @@ describe('formatGitHubComment', () => {
     expect(comment).toContain('🔴 Blocking Issues')
   })
 
+  it('includes each finding confidence percent next to the file location', () => {
+    const withLine = makeFinding({
+      id: 'b1',
+      severity: 'BLOCKING',
+      title: 'Blocking finding',
+      file: 'app/route.ts',
+      line: 183,
+      confidence: 0.65,
+    })
+    const withLineReview: PRReview = {
+      ...review,
+      blockingIssues: [withLine],
+    }
+    const comment = formatGitHubComment(
+      withLineReview,
+      buildSubmission(buildInitialState(withLineReview), true)
+    )
+    expect(comment).toContain(
+      '**Blocking finding** (`app/route.ts:183`, 65% confidence)'
+    )
+    expect(comment).toContain(
+      '**Suggestion finding** (`src/foo.ts`, 80% confidence)'
+    )
+  })
+
   it('includes testing recommendations', () => {
     const state = buildInitialState(review)
     const sub = buildSubmission(state, true)

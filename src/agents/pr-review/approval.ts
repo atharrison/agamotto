@@ -1,4 +1,5 @@
 import { AGAMOTTO_REVIEW_FOOTER } from '../../lib/github-conversation'
+import { formatConfidencePercent } from '../../lib/confidence-bar'
 import {
   ReviewSection,
   defaultAlignmentText,
@@ -184,6 +185,14 @@ function appendListSection(
   lines.push('')
 }
 
+function formatFindingHeading(
+  title: string,
+  finding: Pick<Finding, 'file' | 'line' | 'confidence'>
+): string {
+  const loc = `${finding.file}${finding.line ? `:${finding.line}` : ''}`
+  return `\n**${title}** (\`${loc}\`, ${formatConfidencePercent(finding.confidence)} confidence)`
+}
+
 /**
  * Format a ReviewSubmission into a GitHub-ready markdown comment body.
  * Used by the finalize route when postToGitHub=true.
@@ -227,7 +236,7 @@ export function formatGitHubComment(
       if (!f || f.severity !== 'BLOCKING') continue
       const title = d.editedTitle ?? f.title
       const body = d.editedBody ?? f.body
-      lines.push(`\n**${title}** (\`${f.file}${f.line ? `:${f.line}` : ''}\`)`)
+      lines.push(formatFindingHeading(title, f))
       lines.push(body)
       if (f.suggestedFix) lines.push(`\n> Suggested fix: ${f.suggestedFix}`)
     }
@@ -241,7 +250,7 @@ export function formatGitHubComment(
       if (!f || f.severity !== 'SUGGESTION') continue
       const title = d.editedTitle ?? f.title
       const body = d.editedBody ?? f.body
-      lines.push(`\n**${title}** (\`${f.file}${f.line ? `:${f.line}` : ''}\`)`)
+      lines.push(formatFindingHeading(title, f))
       lines.push(body)
     }
     lines.push('')
@@ -257,7 +266,7 @@ export function formatGitHubComment(
       const f = byId.get(d.findingId)!
       const title = d.editedTitle ?? f.title
       const body = d.editedBody ?? f.body
-      lines.push(`\n**${title}** (\`${f.file}${f.line ? `:${f.line}` : ''}\`)`)
+      lines.push(formatFindingHeading(title, f))
       lines.push(body)
       if (f.suggestedFix) lines.push(`\n> Suggested fix: ${f.suggestedFix}`)
     }
