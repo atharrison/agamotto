@@ -182,6 +182,8 @@ describe('formatReviewCommentFromUi', () => {
         verdictSummary: 'A few nits',
         whatLooksGood: ['Tests'],
         testingRecommendations: ['Run npm test'],
+        questions: ['Why this approach?'],
+        ticketAlignment: [{ requirement: 'Save without posting', met: true }],
       },
     })
     expect(markdown).toContain('## AI PR Review — COMMENT')
@@ -189,6 +191,35 @@ describe('formatReviewCommentFromUi', () => {
     expect(markdown).toContain('A few nits')
     expect(markdown).toContain('Tests')
     expect(markdown).toContain('Run npm test')
+    expect(markdown).toContain('Why this approach?')
+    expect(markdown).toContain('Save without posting')
+  })
+
+  it('omits excluded extras sections from the copied comment', () => {
+    const markdown = formatReviewCommentFromUi({
+      reviewId: 'rev-1',
+      findings: [finding({ id: 's1' })],
+      decisions: { s1: { findingId: 's1', accepted: true } },
+      extras: {
+        summary: 'Overall good',
+        verdict: 'COMMENT',
+        whatLooksGood: ['Tests'],
+        testingRecommendations: ['Run npm test'],
+      },
+      sections: {
+        PREAMBLE: { section: 'PREAMBLE', accepted: false },
+        WHAT_LOOKS_GOOD: { section: 'WHAT_LOOKS_GOOD', accepted: false },
+        TESTING_RECOMMENDATIONS: {
+          section: 'TESTING_RECOMMENDATIONS',
+          accepted: true,
+          editedBody: 'Hit /health',
+        },
+      },
+    })
+    expect(markdown).not.toContain('Overall good')
+    expect(markdown).not.toContain('Tests')
+    expect(markdown).toContain('Hit /health')
+    expect(markdown).not.toContain('Run npm test')
   })
 
   it('derives REQUEST_CHANGES when an accepted blocking has no stored verdict', () => {
