@@ -9,7 +9,7 @@ import {
 } from '../../../src/lib/conventions'
 import { isAdminGithubUser } from '../../../src/lib/github-users'
 import { overlaysFromRows } from '../../../src/lib/overlays'
-import ReposManager from './ReposManager'
+import { ReposManager } from './ReposManager'
 import { AgentGuidance } from './AgentGuidance'
 
 export const dynamic = 'force-dynamic'

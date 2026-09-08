@@ -16,7 +16,7 @@ export async function beginTrackedReview(
     await createReview(reviewId, prUrl, mode)
     reviewRowCreated = true
   } catch (err) {
-    console.error('[start] createReview failed:', err)
+    console.error('[beginTrackedReview] createReview failed:', err)
   }
 
   const prParsed = parsePrUrl(prUrl)
@@ -24,6 +24,9 @@ export async function beginTrackedReview(
   try {
     await markPrInReview(prParsed, reviewRowCreated ? reviewId : null)
   } catch (err) {
-    console.error('[start] tracked_prs IN_REVIEW upsert failed:', err)
+    console.error(
+      '[beginTrackedReview] tracked_prs IN_REVIEW upsert failed:',
+      err
+    )
   }
 }

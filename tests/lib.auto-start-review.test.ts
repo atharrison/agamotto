@@ -13,6 +13,7 @@ jest.mock('../src/lib/execute-review-pipeline', () => ({
 
 import {
   discardReviewEmit,
+  resetAutoStartedPrUrls,
   tryAutoStartOpenedReview,
 } from '../src/lib/auto-start-review'
 
@@ -23,6 +24,7 @@ const originalGithubToken = process.env.GITHUB_TOKEN
 
 beforeEach(() => {
   jest.clearAllMocks()
+  resetAutoStartedPrUrls()
   mockBegin.mockResolvedValue(undefined)
   mockExecute.mockResolvedValue(undefined)
   delete process.env.ALLOWED_GITHUB_USERS
@@ -119,5 +121,36 @@ describe('tryAutoStartOpenedReview', () => {
 
     expect(decision).toBe(AutoStartDecision.SKIP_AUTHOR_NOT_ALLOWED)
     expect(mockBegin).not.toHaveBeenCalled()
+  })
+
+  it('skips a second in-process start for the same PR URL', async () => {
+    let release: () => void = () => {}
+    mockBegin.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          release = () => resolve(undefined)
+        })
+    )
+
+    const first = tryAutoStartOpenedReview({
+      prUrl: PR_URL,
+      prAuthor: 'dev',
+      existingStatus: null,
+      lastReviewId: null,
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    const second = await tryAutoStartOpenedReview({
+      prUrl: PR_URL,
+      prAuthor: 'dev',
+      existingStatus: null,
+      lastReviewId: null,
+    })
+    expect(second).toBe(AutoStartDecision.SKIP_ALREADY_STARTED)
+    expect(mockBegin).toHaveBeenCalledTimes(1)
+
+    release()
+    await expect(first).resolves.toBe(AutoStartDecision.START)
   })
 })

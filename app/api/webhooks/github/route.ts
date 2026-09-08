@@ -1,11 +1,12 @@
 import { type NextRequest, NextResponse } from 'next/server'
+import { AutoStartDecision } from '../../../../src/lib/auto-start'
+import { tryAutoStartOpenedReview } from '../../../../src/lib/auto-start-review'
 import { createSupabaseServiceRoleClient } from '../../../../src/lib/supabase/server'
-import { verifyGitHubSignature } from '../../../../src/lib/webhook'
 import {
   SYNC_INVALIDATES_STATUSES,
   TrackedPrStatus,
 } from '../../../../src/lib/tracked-prs'
-import { tryAutoStartOpenedReview } from '../../../../src/lib/auto-start-review'
+import { verifyGitHubSignature } from '../../../../src/lib/webhook'
 
 // Used for constant-time dummy HMAC comparisons when no repo row is found or
 // the repo has no secret, so the latency profile of those paths is
@@ -186,16 +187,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    let autoStart: string | undefined
+    let started: boolean | undefined
     if (configuredRepo.auto_start === true) {
-      autoStart = await tryAutoStartOpenedReview({
+      const decision = await tryAutoStartOpenedReview({
         prUrl,
         prAuthor,
         existingStatus,
         lastReviewId,
       })
+      started = decision === AutoStartDecision.START
     }
-    return NextResponse.json({ ok: true, action, autoStart })
+    return NextResponse.json({ ok: true, action, started })
   }
 
   if (action === 'reopened') {

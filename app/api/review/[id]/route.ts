@@ -169,6 +169,7 @@ export async function GET(
         }
       }
 
+      // Errors are emitted inside executeReviewPipeline (catch + SSE).
       try {
         const githubToken = githubTokenFromFresh(await getFreshGitHubToken())
         await executeReviewPipeline({

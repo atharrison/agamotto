@@ -527,7 +527,7 @@ describe('POST /api/webhooks/github', () => {
     expect(await res.json()).toEqual({
       ok: true,
       action: 'opened',
-      autoStart: 'START',
+      started: true,
     })
     expect(mockTryAutoStart).toHaveBeenCalledWith({
       prUrl: `https://github.com/${OWNER}/${REPO}/pull/42`,

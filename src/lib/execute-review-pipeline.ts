@@ -10,6 +10,7 @@ import { completeReview, failReview } from '../memory/review-store'
 import { markPrReviewFailed, markPrReady } from '../memory/tracked-pr-store'
 import { parsePrUrl } from './queue'
 import { loadReviewSettings } from './conventions-store'
+import type { AgentOverlays } from './overlays'
 import {
   pipelineFailureErrorMessage,
   tokenBudgetOverageFromError,
@@ -26,6 +27,7 @@ export type ExecuteReviewPipelineOpts = {
   emit: ReviewPipelineEmit
 }
 
+/** Same-process dedupe (webhook + SSE). One Railway replica — not a distributed lock. */
 const inflight = new Map<string, Promise<void>>()
 
 export function waitForInflightPipeline(
@@ -40,7 +42,7 @@ async function runPipeline(opts: ExecuteReviewPipelineOpts): Promise<void> {
   try {
     const context = createReviewContext(undefined, githubToken)
     let conventionsDoc: string | undefined
-    let overlays = undefined
+    let overlays: AgentOverlays | undefined
     try {
       const settings = await loadReviewSettings()
       conventionsDoc = settings.conventionsDoc

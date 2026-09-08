@@ -18,9 +18,9 @@ import {
   getFreshGitHubToken,
   githubTokenFromFresh,
 } from '../../../../../src/lib/github-auth'
+import { githubLoginFromUser } from '../../../../../src/lib/github-users'
 import { parsePrUrl } from '../../../../../src/lib/queue'
 import { reviewHistoryMetadata } from '../../../../../src/lib/review-history-payload'
-import { githubLoginFromUser } from '../../../../../src/lib/github-users'
 import { createSupabaseServerClient } from '../../../../../src/lib/supabase/server'
 import { markPrReviewed } from '../../../../../src/memory/tracked-pr-store'
 import {

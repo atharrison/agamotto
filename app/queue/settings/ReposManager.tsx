@@ -13,7 +13,7 @@ interface ConfiguredRepo {
   created_at: string
 }
 
-export default function ReposManager({
+export function ReposManager({
   initialRepos,
   isAdmin,
 }: {
