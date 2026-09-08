@@ -21,12 +21,18 @@ const mockGetGitHubToken = jest.fn()
 const mockGetFreshGitHubToken = jest.fn()
 const mockLoadReviewSettings = jest.fn()
 
-jest.mock('../src/memory/review-store', () => ({
-  getReview: (...args: unknown[]) => mockGetReview(...args),
-  createReview: (...args: unknown[]) => mockCreateReview(...args),
-  completeReview: (...args: unknown[]) => mockCompleteReview(...args),
-  failReview: (...args: unknown[]) => mockFailReview(...args),
-}))
+jest.mock('../src/memory/review-store', () => {
+  const actual = jest.requireActual(
+    '../src/memory/review-store'
+  ) as typeof import('../src/memory/review-store')
+  return {
+    ReviewStatus: actual.ReviewStatus,
+    getReview: (...args: unknown[]) => mockGetReview(...args),
+    createReview: (...args: unknown[]) => mockCreateReview(...args),
+    completeReview: (...args: unknown[]) => mockCompleteReview(...args),
+    failReview: (...args: unknown[]) => mockFailReview(...args),
+  }
+})
 
 jest.mock('../src/agents/pr-review/coordinator', () => ({
   runReview: (...args: unknown[]) => mockRunReview(...args),

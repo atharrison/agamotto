@@ -581,6 +581,9 @@ describe('PATCH /api/queue/repos/[id]', () => {
     expect(mockServiceClient.current.update).toHaveBeenCalledWith({
       auto_start: true,
     })
+    expect(mockServiceClient.current.select).toHaveBeenCalledWith(
+      'id, owner, name, active, auto_start, created_at, updated_at'
+    )
   })
 
   it('returns 404 when the repo does not exist', async () => {

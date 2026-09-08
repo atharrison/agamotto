@@ -1,5 +1,9 @@
 import { type NextRequest } from 'next/server'
-import { createReview, getReview } from '../../../../src/memory/review-store'
+import {
+  createReview,
+  getReview,
+  ReviewStatus,
+} from '../../../../src/memory/review-store'
 import { markPrReviewFailed } from '../../../../src/memory/tracked-pr-store'
 import {
   getFreshGitHubToken,
@@ -9,7 +13,6 @@ import { parsePrUrl } from '../../../../src/lib/queue'
 import {
   ReviewStreamKind,
   resolveReviewStream,
-  StoredReviewStatus,
 } from '../../../../src/lib/review-stream'
 import { encodeSseEvent, tryEnqueueSse } from '../../../../src/lib/sse'
 import {
@@ -72,7 +75,7 @@ export async function GET(
         console.warn(`[review/${reviewId}] getReview check failed:`, err)
       }
 
-      if (existing?.status === StoredReviewStatus.RUNNING) {
+      if (existing?.status === ReviewStatus.RUNNING) {
         const inflight = waitForInflightPipeline(reviewId)
         if (inflight) {
           await inflight
@@ -85,6 +88,9 @@ export async function GET(
             )
           }
         }
+        // No inflight: this process did not start the run (restart, or the
+        // webhook worker died). Fall through to RUN and heal. Do not replay —
+        // RUNNING rows have no result yet.
       }
 
       const decision = resolveReviewStream({
@@ -99,7 +105,7 @@ export async function GET(
       })
 
       if (decision.kind === ReviewStreamKind.ERROR) {
-        if (existing?.status === 'ERROR') {
+        if (existing?.status === ReviewStatus.ERROR) {
           const parsed = parsePrUrl(existing.pr_url)
           if (parsed) await markPrReviewFailed(parsed).catch(() => {})
         }

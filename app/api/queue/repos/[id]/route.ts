@@ -63,7 +63,7 @@ export async function PATCH(
     .from('configured_repos')
     .update({ auto_start: parsed.data.auto_start })
     .eq('id', id)
-    .select()
+    .select('id, owner, name, active, auto_start, created_at, updated_at')
 
   if (error) {
     console.error('[PATCH /api/queue/repos/[id]]', error)

@@ -50,6 +50,9 @@ export async function tryAutoStartOpenedReview(
   }
 
   const reviewId = uuidv4()
+  // Await the row mint so last_review_id + IN_REVIEW land before the webhook
+  // returns. Duplicate `opened` deliveries then skip. The pipeline itself is
+  // detached — do not await it.
   await beginTrackedReview(reviewId, opts.prUrl, 'full')
   void executeReviewPipeline({
     reviewId,
