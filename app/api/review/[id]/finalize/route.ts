@@ -21,7 +21,7 @@ import {
 import { parsePrUrl } from '../../../../../src/lib/queue'
 import { markPrReviewed } from '../../../../../src/memory/tracked-pr-store'
 import {
-  ReviewSectionSchema,
+  SectionDecisionSchema,
   type FindingDecision,
 } from '../../../../../src/agents/pr-review/schema'
 
@@ -34,15 +34,9 @@ const FindingDecisionInput = z.object({
   editedBody: z.string().optional(),
 })
 
-const SectionDecisionInput = z.object({
-  section: ReviewSectionSchema,
-  action: z.enum(['ACCEPT', 'REJECT', 'EDIT']),
-  editedBody: z.string().optional(),
-})
-
 const FinalizeBody = z.object({
   decisions: z.array(FindingDecisionInput).default([]),
-  sections: z.array(SectionDecisionInput).optional(),
+  sections: z.array(SectionDecisionSchema).optional(),
   postComment: z.boolean().default(false),
   approve: z.boolean().default(false),
 })

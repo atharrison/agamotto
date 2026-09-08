@@ -134,6 +134,7 @@ export function resolveSection(
 }
 
 function includedFromAction(action: unknown): boolean | undefined {
+  // undefined = unrecognised action, so hydrateSectionUi skips the row
   if (action === 'REJECT') return false
   if (action === 'ACCEPT' || action === 'EDIT') return true
   return undefined

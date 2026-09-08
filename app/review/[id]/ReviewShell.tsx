@@ -528,6 +528,7 @@ export function ReviewShell({
   }
 
   function saveSectionEdit(section: ReviewSection) {
+    // Baseline is generated text so saving that text back clears editedBody.
     const original = displayedSectionText(section, commentExtras)
     const trimmed = sectionEditBody
     setSections(prev => ({
