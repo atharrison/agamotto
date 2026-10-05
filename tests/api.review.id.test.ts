@@ -244,6 +244,78 @@ describe('GET /api/review/[id] — ATH-30 stored replay', () => {
   })
 })
 
+describe('GET /api/review/[id] — token refresh timing (ATH-60)', () => {
+  // A refresh rewrites the auth cookies. Those writes only reach the browser if
+  // they happen before the streaming Response is returned; inside the stream
+  // they are dropped after the single-use refresh token is already spent.
+  it('resolves the GitHub token before the response is returned', async () => {
+    const { GET } = await import('../app/api/review/[id]/route')
+    const req = new NextRequest(
+      `http://localhost/api/review/${REVIEW_ID}?prUrl=${encodeURIComponent(PR_URL)}`
+    )
+
+    const res = await GET(req, { params: Promise.resolve({ id: REVIEW_ID }) })
+
+    // Stream not consumed yet.
+    expect(mockGetFreshGitHubToken).toHaveBeenCalledTimes(1)
+    await res.text()
+    expect(mockGetFreshGitHubToken).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not touch GitHub when replaying a stored COMPLETE review', async () => {
+    mockGetReview.mockResolvedValue(completeRow())
+
+    await getReviewStream('')
+    await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
+
+    expect(mockGetFreshGitHubToken).not.toHaveBeenCalled()
+  })
+
+  it('does not touch GitHub when the stored review already ERRORed', async () => {
+    mockGetReview.mockResolvedValue({
+      id: REVIEW_ID,
+      pr_url: PR_URL,
+      status: 'ERROR',
+      result: null,
+      error_message: 'boom',
+    })
+
+    await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
+
+    expect(mockGetFreshGitHubToken).not.toHaveBeenCalled()
+  })
+
+  it('does not touch GitHub when there is nothing to run (no row, no prUrl)', async () => {
+    mockGetReview.mockResolvedValue(null)
+
+    await getReviewStream('')
+
+    expect(mockGetFreshGitHubToken).not.toHaveBeenCalled()
+  })
+
+  it('resolves the token exactly once for a live run with no stored row', async () => {
+    mockGetReview.mockResolvedValue(null)
+
+    await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
+
+    expect(mockGetFreshGitHubToken).toHaveBeenCalledTimes(1)
+  })
+
+  it('resolves the token to heal a RUNNING row with no in-flight pipeline', async () => {
+    mockGetReview.mockResolvedValue({
+      id: REVIEW_ID,
+      pr_url: PR_URL,
+      status: 'RUNNING',
+      result: null,
+    })
+
+    await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
+
+    expect(mockGetFreshGitHubToken).toHaveBeenCalledTimes(1)
+    expect(mockRunReview).toHaveBeenCalled()
+  })
+})
+
 describe('GET /api/review/[id] — live pipeline', () => {
   it('creates a row and runs the pipeline when nothing is stored', async () => {
     mockGetReview.mockResolvedValue(null)

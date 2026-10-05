@@ -34,6 +34,15 @@ import {
 // Keep in sync with DEFAULT_TIMEOUT_MS / 1000 in src/lib/harness-limits.ts.
 export const maxDuration = 300
 
+/** Narrow a stored row to what `resolveReviewStream` needs. */
+function storedRef(
+  row: Awaited<ReturnType<typeof getReview>>
+): { status: string; pr_url: string; result: unknown } | null {
+  return row
+    ? { status: row.status, pr_url: row.pr_url, result: row.result }
+    : null
+}
+
 /**
  * GET /api/review/[id]?prUrl=<encoded>&mode=full|quick
  * Server-Sent Events stream for live review progress.
@@ -57,6 +66,31 @@ export async function GET(
   const rawMode = searchParams.get('mode')
   const mode: 'full' | 'quick' = rawMode === 'quick' ? 'quick' : 'full'
 
+  // Look up the DB row before requiring ?prUrl= so queue "View Review"
+  // links (`/review/{id}` with no query) can replay COMPLETE results.
+  let existing: Awaited<ReturnType<typeof getReview>> = null
+  try {
+    existing = await getReview(reviewId)
+  } catch (err) {
+    console.warn(`[review/${reviewId}] getReview check failed:`, err)
+  }
+
+  // ATH-60: resolve (and, if needed, refresh) the GitHub token HERE, not inside
+  // the stream. A refresh rotates the single-use refresh token and rewrites the
+  // auth cookies; cookie writes only reach the browser if they happen before
+  // the streaming Response is returned. Inside ReadableStream.start() they are
+  // silently dropped, the old refresh token is already spent, and the next
+  // review forces a sign-in.
+  //
+  // Only requests that can reach the live pipeline need a token. Replaying a
+  // stored review (or erroring) skips the GitHub round trip entirely.
+  const mayRunPipeline =
+    resolveReviewStream({
+      queryPrUrl: prUrl,
+      stored: storedRef(existing),
+    }).kind === ReviewStreamKind.RUN
+  const fresh = mayRunPipeline ? await getFreshGitHubToken() : null
+
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
@@ -69,15 +103,6 @@ export async function GET(
       }
 
       send('connected', { reviewId, prUrl, message: 'Stream connected' })
-
-      // Look up the DB row before requiring ?prUrl= so queue "View Review"
-      // links (`/review/{id}` with no query) can replay COMPLETE results.
-      let existing = null
-      try {
-        existing = await getReview(reviewId)
-      } catch (err) {
-        console.warn(`[review/${reviewId}] getReview check failed:`, err)
-      }
 
       if (existing?.status === ReviewStatus.RUNNING) {
         const inflight = waitForInflightPipeline(reviewId)
@@ -99,13 +124,7 @@ export async function GET(
 
       const decision = resolveReviewStream({
         queryPrUrl: prUrl,
-        stored: existing
-          ? {
-              status: existing.status,
-              pr_url: existing.pr_url,
-              result: existing.result,
-            }
-          : null,
+        stored: storedRef(existing),
       })
 
       if (decision.kind === ReviewStreamKind.ERROR) {
@@ -180,21 +199,23 @@ export async function GET(
 
       // Errors are emitted inside executeReviewPipeline (catch + SSE).
       try {
-        const fresh = await getFreshGitHubToken()
-        if (!fresh.ok) {
+        // Normally resolved above; the fallback only covers a run that was not
+        // predictable from the first lookup (cookie writes would be dropped).
+        const auth = fresh ?? (await getFreshGitHubToken())
+        if (!auth.ok) {
           // Visible in the dev/Railway log: which auth failure ended the run.
           console.warn(
-            `[review/${reviewId}] GitHub session unusable (${fresh.error}) — failing with sign-in copy`
+            `[review/${reviewId}] GitHub session unusable (${auth.error}) — failing with sign-in copy`
           )
         }
         await executeReviewPipeline({
           reviewId,
           prUrl: runPrUrl,
           mode,
-          githubToken: githubTokenFromFresh(fresh),
+          githubToken: githubTokenFromFresh(auth),
           // ATH-61: a dead session fails here rather than silently falling
           // back to GITHUB_TOKEN and then failing to post.
-          sessionExpired: !fresh.ok,
+          sessionExpired: !auth.ok,
           emit: send,
         })
       } finally {
