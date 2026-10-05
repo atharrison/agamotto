@@ -443,8 +443,8 @@ export default function QueueDisplay({
                       </div>
 
                       {/* ATH-59: capped so the chip strip wraps inside this group
-                      (row grows taller) instead of growing wide and squeezing
-                      the PR title column. */}
+                          (row grows taller) instead of growing wide and squeezing
+                          the PR title column. */}
                       <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-2 sm:w-auto sm:max-w-[min(50%,32rem)]">
                         <ReviewRoundChips reviews={chips} />
                         {(isOpen || pr.updated_since_review) && !isClosed && (
