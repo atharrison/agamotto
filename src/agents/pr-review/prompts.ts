@@ -115,7 +115,7 @@ Output ONLY a raw JSON object — no markdown fences, no explanation before or a
       "file": "path/to/file.ts",
       "line": 42,
       "title": "one-line summary of the issue",
-      "body": "detailed explanation with evidence from the code",
+      "body": "detailed explanation with evidence from the code (markdown: short paragraphs separated by blank lines, '-' bullets for lists, backtick-wrapped identifiers, language-tagged code fences for snippets)",
       "confidence": 0.85,
       "suggestedFix": "optional suggested fix — omit field entirely if none"
     }
@@ -178,7 +178,7 @@ Output ONLY a raw JSON object — no markdown fences, no explanation before or a
       "file": "path/to/file.ts",
       "line": 42,
       "title": "one-line summary of the vulnerability",
-      "body": "detailed explanation with evidence from the code",
+      "body": "detailed explanation with evidence from the code (markdown: short paragraphs separated by blank lines, '-' bullets for lists, backtick-wrapped identifiers, language-tagged code fences for snippets)",
       "confidence": 0.85,
       "suggestedFix": "optional suggested fix — omit field entirely if none"
     }
@@ -251,7 +251,7 @@ Output ONLY a raw JSON object — no markdown fences, no explanation before or a
       "file": "path/to/file.ts",
       "line": 42,
       "title": "one-line summary of the violation",
-      "body": "detailed explanation with evidence from the code",
+      "body": "detailed explanation with evidence from the code (markdown: short paragraphs separated by blank lines, '-' bullets for lists, backtick-wrapped identifiers, language-tagged code fences for snippets)",
       "confidence": 0.85,
       "suggestedFix": "optional suggested fix — omit field entirely if none"
     }
@@ -316,7 +316,7 @@ Output ONLY a raw JSON object — no markdown fences, no explanation before or a
       "file": "path/to/file.ts",
       "line": 42,
       "title": "one-line summary of the performance issue",
-      "body": "detailed explanation with evidence from the code",
+      "body": "detailed explanation with evidence from the code (markdown: short paragraphs separated by blank lines, '-' bullets for lists, backtick-wrapped identifiers, language-tagged code fences for snippets)",
       "confidence": 0.85,
       "suggestedFix": "optional suggested fix — omit field entirely if none"
     }
@@ -378,7 +378,7 @@ Output ONLY a raw JSON object — no markdown fences, no explanation before or a
       "file": "path/to/file.ts",
       "line": 42,
       "title": "one-line summary of the style issue",
-      "body": "detailed explanation with evidence from the code",
+      "body": "detailed explanation with evidence from the code (markdown: short paragraphs separated by blank lines, '-' bullets for lists, backtick-wrapped identifiers, language-tagged code fences for snippets)",
       "confidence": 0.85,
       "suggestedFix": "optional suggested fix — omit field entirely if none"
     }
