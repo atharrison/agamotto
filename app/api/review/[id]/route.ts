@@ -14,6 +14,10 @@ import {
   ReviewStreamKind,
   resolveReviewStream,
 } from '../../../../src/lib/review-stream'
+import {
+  PR_FETCH_MESSAGES,
+  prFetchFailureFromMessage,
+} from '../../../../src/lib/pr-fetch-error'
 import { encodeSseEvent, tryEnqueueSse } from '../../../../src/lib/sse'
 import {
   tokenBudgetErrorMessage,
@@ -40,7 +44,7 @@ export const maxDuration = 300
  *   finding     { finding: Finding }
  *   alarm       { alarm }
  *   stats       { tokensUsed, estimatedCostUsd, durationMs, findingsCount, phaseDurations }
- *   error       { error: string }
+ *   error       { error: string, failure?: PrFetchFailure }
  *   done        { reviewId, extras? }
  */
 export async function GET(
@@ -109,12 +113,17 @@ export async function GET(
           const parsed = parsePrUrl(existing.pr_url)
           if (parsed) await markPrReviewFailed(parsed).catch(() => {})
         }
-        const overage = tokenBudgetOverageFromMessage(
-          existing?.error_message ?? ''
-        )
+        const storedMessage = existing?.error_message ?? ''
+        const overage = tokenBudgetOverageFromMessage(storedMessage)
+        const prFetchFailure = prFetchFailureFromMessage(storedMessage)
         if (overage) {
           send('stats', tokenBudgetStats(overage))
           send('error', { error: tokenBudgetErrorMessage(overage) })
+        } else if (prFetchFailure) {
+          send('error', {
+            error: PR_FETCH_MESSAGES[prFetchFailure],
+            failure: prFetchFailure,
+          })
         } else {
           send('error', { error: decision.error })
         }

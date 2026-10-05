@@ -8,6 +8,11 @@
  */
 
 import { NextRequest } from 'next/server'
+import {
+  PR_FETCH_MESSAGES,
+  PrFetchError,
+  PrFetchFailure,
+} from '../src/lib/pr-fetch-error'
 
 const mockGetReview = jest.fn()
 const mockCreateReview = jest.fn()
@@ -213,6 +218,26 @@ describe('GET /api/review/[id] — ATH-30 stored replay', () => {
       {
         error:
           'Token budget exceeded: 167,123 used of 150,000 (over by 17,123).',
+      },
+    ])
+  })
+
+  it('replays the sign-in copy for a stored PrFetchError (ATH-61)', async () => {
+    mockGetReview.mockResolvedValue({
+      id: REVIEW_ID,
+      pr_url: PR_URL,
+      status: 'ERROR',
+      result: null,
+      error_message: String(new PrFetchError(PrFetchFailure.AUTH)),
+    })
+
+    const { text } = await getReviewStream('')
+
+    expect(mockRunReview).not.toHaveBeenCalled()
+    expect(eventsOfType(text, 'error')).toEqual([
+      {
+        error: PR_FETCH_MESSAGES[PrFetchFailure.AUTH],
+        failure: PrFetchFailure.AUTH,
       },
     ])
   })

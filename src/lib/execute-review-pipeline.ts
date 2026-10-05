@@ -12,7 +12,7 @@ import { parsePrUrl } from './queue'
 import { loadReviewSettings } from './conventions-store'
 import type { AgentOverlays } from './overlays'
 import {
-  pipelineFailureErrorMessage,
+  pipelineFailurePayload,
   tokenBudgetOverageFromError,
   tokenBudgetStats,
 } from './review-run-stats'
@@ -90,7 +90,7 @@ async function runPipeline(opts: ExecuteReviewPipelineOpts): Promise<void> {
         })
       )
     }
-    emit('error', { error: pipelineFailureErrorMessage(err) })
+    emit('error', pipelineFailurePayload(err))
     emit('done', { reviewId })
   }
 }

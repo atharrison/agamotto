@@ -32,6 +32,11 @@ import {
   executeReviewPipeline,
   waitForInflightPipeline,
 } from '../src/lib/execute-review-pipeline'
+import {
+  PR_FETCH_MESSAGES,
+  PrFetchError,
+  PrFetchFailure,
+} from '../src/lib/pr-fetch-error'
 
 const REVIEW_ID = 'rev-inflight'
 const PR_URL = 'https://github.com/acme/app/pull/7'
@@ -141,6 +146,33 @@ describe('executeReviewPipeline', () => {
     expect(emit).toHaveBeenCalledWith('error', {
       error: 'Review pipeline failed. Check server logs for details.',
     })
+    spy.mockRestore()
+  })
+
+  it('fails the review, frees the PR, and emits the sign-in copy on a PrFetchError (ATH-61)', async () => {
+    mockRunReview.mockRejectedValue(new PrFetchError(PrFetchFailure.AUTH))
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const emit = jest.fn()
+    await executeReviewPipeline({
+      reviewId: 'rev-pr-fetch',
+      prUrl: PR_URL,
+      mode: 'full',
+      githubToken: null,
+      emit,
+    })
+    expect(mockCompleteReview).not.toHaveBeenCalled()
+    expect(mockFailReview).toHaveBeenCalledWith(
+      'rev-pr-fetch',
+      expect.stringContaining(PR_FETCH_MESSAGES[PrFetchFailure.AUTH])
+    )
+    expect(mockMarkPrReviewFailed).toHaveBeenCalledWith(
+      expect.objectContaining({ owner: 'acme', repo: 'app', pr_number: 7 })
+    )
+    expect(emit).toHaveBeenCalledWith('error', {
+      error: PR_FETCH_MESSAGES[PrFetchFailure.AUTH],
+      failure: PrFetchFailure.AUTH,
+    })
+    expect(emit).toHaveBeenCalledWith('done', { reviewId: 'rev-pr-fetch' })
     spy.mockRestore()
   })
 })

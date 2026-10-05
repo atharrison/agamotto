@@ -8,6 +8,7 @@ import { dispatch } from '../src/harness/tools'
 import { listCompleteReviewsForPr } from '../src/memory/review-store'
 import { fetchPrConversation, fetchPrFiles } from '../src/tools/github'
 import { runContextAgent } from '../src/agents/pr-review/context-agent'
+import { PrFetchError, PrFetchFailure } from '../src/lib/pr-fetch-error'
 import {
   GithubCommentKind,
   GithubCommentSource,
@@ -562,38 +563,84 @@ describe('runReview (coordinator)', () => {
       })
     })
 
-    it('falls back to the context agent when the fetch throws', async () => {
-      mockElidingContextAgent()
-      mockFetchPrFiles.mockRejectedValue(new Error('API down'))
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    // ATH-61: the diff is a precondition — fail before any agent runs.
+    describe('fetch failures stop the review (ATH-61)', () => {
+      let warnSpy: jest.SpyInstance
 
-      const review = await runReview({
-        reviewId: 'test-rev-gt-4',
-        prUrl: 'https://github.com/owner/repo/pull/1',
-        mode: 'full',
-        context: makeContext(stubOctokit()),
+      beforeEach(() => {
+        warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
       })
 
-      warnSpy.mockRestore()
-      expect(review.reviewId).toBe('test-rev-gt-4')
-      expect(agentContexts().some(c => c.includes('getTier() { ... }'))).toBe(
-        true
-      )
-    })
+      afterEach(() => warnSpy.mockRestore())
 
-    it('skips the fetch when there is no GitHub token', async () => {
-      mockElidingContextAgent()
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+      async function runAndCatch(context: ReviewContext): Promise<unknown> {
+        try {
+          await runReview({
+            reviewId: 'test-rev-gt-fail',
+            prUrl: 'https://github.com/owner/repo/pull/1',
+            mode: 'full',
+            context,
+          })
+        } catch (err) {
+          return err
+        }
+        throw new Error('expected runReview to reject')
+      }
 
-      await runReview({
-        reviewId: 'test-rev-gt-5',
-        prUrl: 'https://github.com/owner/repo/pull/1',
-        mode: 'full',
-        context: makeContext(null),
+      it('throws an AUTH PrFetchError when GitHub rejects the token', async () => {
+        mockElidingContextAgent()
+        mockFetchPrFiles.mockRejectedValue(
+          Object.assign(new Error('Bad credentials'), { status: 401 })
+        )
+
+        const err = await runAndCatch(makeContext(stubOctokit()))
+
+        expect(err).toBeInstanceOf(PrFetchError)
+        expect((err as PrFetchError).failure).toBe(PrFetchFailure.AUTH)
       })
 
-      warnSpy.mockRestore()
-      expect(mockFetchPrFiles).not.toHaveBeenCalled()
+      it('classifies a missing PR as NOT_FOUND, not AUTH', async () => {
+        mockElidingContextAgent()
+        mockFetchPrFiles.mockRejectedValue(
+          Object.assign(new Error('Not Found'), { status: 404 })
+        )
+
+        const err = await runAndCatch(makeContext(stubOctokit()))
+
+        expect((err as PrFetchError).failure).toBe(PrFetchFailure.NOT_FOUND)
+      })
+
+      it('classifies an unexpected failure as UNKNOWN', async () => {
+        mockElidingContextAgent()
+        mockFetchPrFiles.mockRejectedValue(new Error('API down'))
+
+        const err = await runAndCatch(makeContext(stubOctokit()))
+
+        expect((err as PrFetchError).failure).toBe(PrFetchFailure.UNKNOWN)
+      })
+
+      it('throws an AUTH PrFetchError when there is no GitHub token', async () => {
+        mockElidingContextAgent()
+
+        const err = await runAndCatch(makeContext(null))
+
+        expect(err).toBeInstanceOf(PrFetchError)
+        expect((err as PrFetchError).failure).toBe(PrFetchFailure.AUTH)
+        expect(mockFetchPrFiles).not.toHaveBeenCalled()
+      })
+
+      it('never starts the context agent or any domain agent', async () => {
+        mockElidingContextAgent()
+        mockFetchPrFiles.mockRejectedValue(
+          Object.assign(new Error('Bad credentials'), { status: 401 })
+        )
+
+        await runAndCatch(makeContext(stubOctokit()))
+
+        expect(mockRunContextAgent).not.toHaveBeenCalled()
+        expect(mockModel.chat).not.toHaveBeenCalled()
+        expect(mockFetchPrConversation).not.toHaveBeenCalled()
+      })
     })
 
     it('does not fetch when the PR URL cannot be parsed', async () => {
@@ -703,29 +750,6 @@ describe('runReview (coordinator)', () => {
         label: 'GitHub conversation unavailable',
       })
     )
-  })
-
-  it('skips GitHub conversation fetch when octokit is null', async () => {
-    mockFullContextAgent()
-    const context = makeContext(null)
-    const emit = jest.fn()
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
-
-    await runReview({
-      reviewId: 'test-rev-12',
-      prUrl: 'https://github.com/owner/repo/pull/1',
-      mode: 'full',
-      context,
-      emit,
-    })
-
-    warnSpy.mockRestore()
-    expect(mockFetchPrConversation).not.toHaveBeenCalled()
-    expect(emit).toHaveBeenCalledWith('progress', {
-      tool: 'github_conversation',
-      args: { itemCount: 0, omitted: false, failed: true },
-      label: 'GitHub conversation unavailable',
-    })
   })
 
   it('downgrades an ATH-16-style hedged BLOCKING finding before emit', async () => {

@@ -32,6 +32,8 @@ import {
 } from '../../../src/agents/pr-review/schema'
 import { formatConfidencePercent } from '../../../src/lib/confidence-bar'
 import { ConfidenceBar } from '../../components/ConfidenceBar'
+import SignOutButton from '../../components/SignOutButton'
+import { PrFetchFailure } from '../../../src/lib/pr-fetch-error'
 import {
   IncludeAllState,
   allCardsCollapsed,
@@ -262,6 +264,10 @@ export function ReviewShell({
     hydrated?.isCachedReview ?? false
   )
   const [runStats, setRunStats] = useState<ReviewRunStatsPayload | null>(null)
+  const [failure, setFailure] = useState<{
+    message: string
+    code?: PrFetchFailure
+  } | null>(null)
   const startTimeRef = useRef(Date.now())
   const domainDoneRef = useRef(0)
   const streamFailedRef = useRef(false)
@@ -391,10 +397,17 @@ export function ReviewShell({
     })
 
     es.addEventListener('error', e => {
-      const msg = (e as MessageEvent).data
-        ? JSON.parse((e as MessageEvent).data).error
-        : 'Unknown error'
+      const payload = (e as MessageEvent).data
+        ? (JSON.parse((e as MessageEvent).data) as {
+            error?: string
+            failure?: PrFetchFailure
+          })
+        : null
+      const msg = payload?.error ?? 'Unknown error'
       streamFailedRef.current = true
+      if (payload?.error) {
+        setFailure({ message: payload.error, code: payload.failure })
+      }
       addActivity({ type: 'alarm', text: `✗ Error: ${msg}` })
       setStatus('error')
       setPhaseStatuses(p => {
@@ -777,7 +790,18 @@ export function ReviewShell({
 
         {findings.length === 0 && status === 'error' && (
           <div className="rounded-lg border border-red-900 bg-red-950/30 p-8 text-center text-sm text-red-400">
-            Review failed. Check the activity log or server logs for details.
+            {failure ? (
+              <>
+                <p>{failure.message}</p>
+                {failure.code === PrFetchFailure.AUTH && (
+                  <SignOutButton className="mt-4 rounded-md bg-red-900/60 px-3 py-1.5 text-xs font-medium text-red-100 transition hover:bg-red-800 disabled:opacity-50">
+                    Sign out
+                  </SignOutButton>
+                )}
+              </>
+            ) : (
+              'Review failed. Check the activity log or server logs for details.'
+            )}
           </div>
         )}
 

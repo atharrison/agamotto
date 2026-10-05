@@ -18,6 +18,11 @@ import { listCompleteReviewsForPr } from '../../memory/review-store'
 import { fetchPrConversation, fetchPrFiles } from '../../tools/github'
 import { parsePrUrl } from '../../lib/queue'
 import {
+  PrFetchError,
+  PrFetchFailure,
+  classifyPrFetchFailure,
+} from '../../lib/pr-fetch-error'
+import {
   assembleGroundTruthDiff,
   formatGroundTruthActivity,
   type GroundTruthDiff,
@@ -173,14 +178,17 @@ async function _runReview(
       externalContextCalls: 0,
     }
   } else {
-    const githubConversationPromise = loadGithubConversation(
+    // ATH-61: the real diff is a precondition. Awaited before any agent runs so
+    // an expired token or missing PR stops the review before it spends tokens.
+    // Applied over the context agent's output below so its transcription can
+    // never win.
+    const groundTruth = await loadGroundTruthDiff(
       context.octokit,
       prUrl,
       reviewId
     )
-    // Started before the context agent so the fetch overlaps the tool loop, and
-    // applied after it so the model's transcription can never win.
-    const groundTruthPromise = loadGroundTruthDiff(
+    // Non-fatal and started before the context agent so it overlaps the loop.
+    const githubConversationPromise = loadGithubConversation(
       context.octokit,
       prUrl,
       reviewId
@@ -237,7 +245,6 @@ async function _runReview(
       args: { itemCount, omitted, failed: githubFailed },
       label: githubLabel,
     })
-    const groundTruth = await groundTruthPromise
     if (groundTruth) {
       emit('progress', {
         tool: 'ground_truth_diff',
@@ -592,9 +599,10 @@ async function loadPriorRounds(
  * Fetch the PR's diff and file list straight from GitHub so the domain agents
  * read the real patches rather than the context agent's transcription of them.
  *
- * Returns null on any failure, in which case the context agent's own values
- * stand — a degraded review beats no review, and the pre-ATH-50 behaviour is
- * exactly that fallback.
+ * ATH-61: a missing token or a failed fetch throws a PrFetchError and ends the
+ * review — a "couldn't fetch the PR" review is useless and burns tokens.
+ * Returns null only when there is nothing to fetch (unparseable URL, or a PR
+ * with no changed files), in which case the context agent's own values stand.
  */
 async function loadGroundTruthDiff(
   octokit: Octokit | null,
@@ -603,23 +611,24 @@ async function loadGroundTruthDiff(
 ): Promise<GroundTruthDiff | null> {
   if (!octokit) {
     console.warn(
-      `[coordinator][${reviewId}] ground-truth diff skipped: no GitHub token`
+      `[coordinator][${reviewId}] ground-truth diff failed: no GitHub token`
     )
-    return null
+    throw new PrFetchError(PrFetchFailure.AUTH)
   }
+  const parsed = parsePrUrl(prUrl)
+  if (!parsed) return null
+  let files: Awaited<ReturnType<typeof fetchPrFiles>>
   try {
-    const parsed = parsePrUrl(prUrl)
-    if (!parsed) return null
-    const files = await fetchPrFiles(octokit, parsed)
-    if (files.length === 0) return null
-    return assembleGroundTruthDiff(files)
+    files = await fetchPrFiles(octokit, parsed)
   } catch (err) {
     console.warn(
       `[coordinator][${reviewId}] ground-truth diff load failed:`,
       err
     )
-    return null
+    throw new PrFetchError(classifyPrFetchFailure(err), err)
   }
+  if (files.length === 0) return null
+  return assembleGroundTruthDiff(files)
 }
 
 async function loadGithubConversation(
