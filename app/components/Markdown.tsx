@@ -63,7 +63,9 @@ const COMPONENTS: Components = {
       {...omitNode(props)}
       // Code inside a fence drops the inline-code chip look; the highlight.js
       // theme adds its own padding/background, which <pre> already provides.
-      className="mt-2 overflow-x-auto rounded-md border border-gray-800 bg-gray-950 p-3 text-xs leading-relaxed [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-[1em] [&_code.hljs]:bg-transparent [&_code.hljs]:p-0"
+      // `!` is required: the theme CSS is unlayered, so it beats Tailwind's
+      // layered utilities regardless of selector specificity.
+      className="mt-2 overflow-x-auto rounded-md border border-gray-800 bg-gray-950 p-3 text-xs leading-relaxed [&_code]:bg-transparent! [&_code]:p-0! [&_code]:text-[1em]"
     />
   ),
   // Inline-code chip styling; <pre> above overrides it for fenced blocks.
