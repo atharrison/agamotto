@@ -32,6 +32,7 @@ import {
 } from '../../../src/agents/pr-review/schema'
 import { formatConfidencePercent } from '../../../src/lib/confidence-bar'
 import { ConfidenceBar } from '../../components/ConfidenceBar'
+import { Markdown } from '../../components/Markdown'
 import { SignOutButton } from '../../components/SignOutButton'
 import { PrFetchFailure } from '../../../src/lib/pr-fetch-error'
 import {
@@ -880,9 +881,9 @@ export function ReviewShell({
                         f.title
                       )}
                     </p>
-                    <p className="mt-1 text-sm text-gray-400">
+                    <Markdown className="mt-1 text-sm text-gray-400">
                       {decisions[f.id]?.editedBody ?? f.body}
-                    </p>
+                    </Markdown>
 
                     {isEditing ? (
                       <div className="mt-3 space-y-2">
@@ -1337,9 +1338,7 @@ function ReviewSectionCard({
       </div>
       {!collapsed && (
         <>
-          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-400">
-            {text}
-          </p>
+          <Markdown className="mt-2 text-sm text-gray-400">{text}</Markdown>
           {isEditing ? (
             <div className="mt-3 space-y-2">
               <textarea
