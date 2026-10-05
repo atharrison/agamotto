@@ -244,6 +244,25 @@ describe('GET /api/review/[id] — ATH-30 stored replay', () => {
   })
 })
 
+describe('GET /api/review/[id] — token refresh timing (ATH-60)', () => {
+  // A refresh rewrites the auth cookies. Those writes only reach the browser if
+  // they happen before the streaming Response is returned; inside the stream
+  // they are dropped after the single-use refresh token is already spent.
+  it('resolves the GitHub token before the response is returned', async () => {
+    const { GET } = await import('../app/api/review/[id]/route')
+    const req = new NextRequest(
+      `http://localhost/api/review/${REVIEW_ID}?prUrl=${encodeURIComponent(PR_URL)}`
+    )
+
+    const res = await GET(req, { params: Promise.resolve({ id: REVIEW_ID }) })
+
+    // Stream not consumed yet.
+    expect(mockGetFreshGitHubToken).toHaveBeenCalledTimes(1)
+    await res.text()
+    expect(mockGetFreshGitHubToken).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('GET /api/review/[id] — live pipeline', () => {
   it('creates a row and runs the pipeline when nothing is stored', async () => {
     mockGetReview.mockResolvedValue(null)

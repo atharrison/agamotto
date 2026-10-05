@@ -57,6 +57,14 @@ export async function GET(
   const rawMode = searchParams.get('mode')
   const mode: 'full' | 'quick' = rawMode === 'quick' ? 'quick' : 'full'
 
+  // ATH-60: resolve (and, if needed, refresh) the GitHub token HERE, not inside
+  // the stream. A refresh rotates the single-use refresh token and rewrites the
+  // auth cookies; cookie writes only reach the browser if they happen before
+  // the streaming Response is returned. Inside ReadableStream.start() they are
+  // silently dropped, the old refresh token is already spent, and the next
+  // review forces a sign-in.
+  const fresh = await getFreshGitHubToken()
+
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({
@@ -180,7 +188,6 @@ export async function GET(
 
       // Errors are emitted inside executeReviewPipeline (catch + SSE).
       try {
-        const fresh = await getFreshGitHubToken()
         if (!fresh.ok) {
           // Visible in the dev/Railway log: which auth failure ended the run.
           console.warn(
