@@ -146,7 +146,7 @@ For a team deployment, create the OAuth App **under the organization** so it per
 
 This step is **optional**. Both setups work:
 
-- **Not opted in (default):** GitHub issues a non-expiring access token and no refresh token. Agamotto keeps it in an httpOnly cookie for 180 days and checks it against GitHub before each review or post. If you revoke the token on GitHub, the next action asks you to sign in again.
+- **Not opted in (default):** GitHub issues a non-expiring access token and no refresh token. Agamotto keeps it in an httpOnly cookie for 30 days (so you sign in about once a month) and checks it against GitHub before each review or post. If you revoke the token on GitHub, the next action asks you to sign in again.
 - **Opted in:** access tokens expire after 8 hours and GitHub also issues a refresh token, which Agamotto uses to renew the token silently. This limits the damage from a leaked token, so it is the safer choice for a shared deployment.
 
 To opt in:
