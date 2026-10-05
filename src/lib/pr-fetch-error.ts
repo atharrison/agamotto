@@ -50,31 +50,27 @@ export class PrFetchError extends Error {
   }
 }
 
-function numberProp(value: unknown, key: string): number | undefined {
-  if (!value || typeof value !== 'object') return undefined
-  const prop = (value as Record<string, unknown>)[key]
-  return typeof prop === 'number' ? prop : undefined
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : null
 }
 
 /** GitHub signals a rate-limited 403 via the message or an exhausted quota header. */
-function isRateLimit403(err: object): boolean {
+function isRateLimit403(err: Record<string, unknown>): boolean {
   if (err instanceof Error && /rate limit/i.test(err.message)) return true
-  const { response } = err as { response?: { headers?: unknown } }
-  const headers = response?.headers
-  if (!headers || typeof headers !== 'object') return false
-  const remaining = (headers as Record<string, unknown>)[
-    'x-ratelimit-remaining'
-  ]
-  return String(remaining) === '0'
+  const headers = asRecord(asRecord(err.response)?.headers)
+  return String(headers?.['x-ratelimit-remaining']) === '0'
 }
 
 /** Map an Octokit / network error to a PrFetchFailure. */
 export function classifyPrFetchFailure(err: unknown): PrFetchFailure {
-  const status = numberProp(err, 'status')
+  const rec = asRecord(err)
+  const status = rec?.status
+  if (!rec || typeof status !== 'number') return PrFetchFailure.UNKNOWN
   if (status === 401) return PrFetchFailure.AUTH
   if (status === 403) {
-    // status is a number, so err is a non-null object here
-    return isRateLimit403(err as object)
+    return isRateLimit403(rec)
       ? PrFetchFailure.RATE_LIMITED
       : PrFetchFailure.AUTH
   }
