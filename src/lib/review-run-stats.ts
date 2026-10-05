@@ -3,6 +3,7 @@
  * Pure — no I/O. TokenBudgetError is detected by name + fields so this
  * module stays out of the harness layer.
  */
+import { PrFetchError, type PrFetchFailure } from './pr-fetch-error'
 
 /** Duck-typed TokenBudgetError fields used for SSE stats and copy. */
 export interface TokenBudgetOverage {
@@ -77,11 +78,26 @@ export function tokenBudgetStats(
   return payload
 }
 
-/** User-facing pipeline error copy. Token budget includes the overage. */
+/**
+ * User-facing pipeline error copy. Token budget includes the overage; a PR
+ * fetch failure (ATH-61) says why GitHub refused and what to do about it.
+ */
 export function pipelineFailureErrorMessage(err: unknown): string {
+  if (err instanceof PrFetchError) return err.message
   const overage = tokenBudgetOverageFromError(err)
   if (overage) return tokenBudgetErrorMessage(overage)
   return 'Review pipeline failed. Check server logs for details.'
+}
+
+/** SSE `error` payload: message plus the PR-fetch failure code when there is one. */
+export function pipelineFailurePayload(err: unknown): {
+  error: string
+  failure?: PrFetchFailure
+} {
+  const error = pipelineFailureErrorMessage(err)
+  return err instanceof PrFetchError
+    ? { error, failure: err.failure }
+    : { error }
 }
 
 /** Activity-log / SSE error text for a known overage. */

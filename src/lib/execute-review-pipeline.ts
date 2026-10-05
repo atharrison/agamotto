@@ -9,10 +9,11 @@ import { runReview } from '../agents/pr-review/coordinator'
 import { completeReview, failReview } from '../memory/review-store'
 import { markPrReviewFailed, markPrReady } from '../memory/tracked-pr-store'
 import { parsePrUrl } from './queue'
+import { PrFetchError, PrFetchFailure } from './pr-fetch-error'
 import { loadReviewSettings } from './conventions-store'
 import type { AgentOverlays } from './overlays'
 import {
-  pipelineFailureErrorMessage,
+  pipelineFailurePayload,
   tokenBudgetOverageFromError,
   tokenBudgetStats,
 } from './review-run-stats'
@@ -24,6 +25,13 @@ export type ExecuteReviewPipelineOpts = {
   prUrl: string
   mode: 'full' | 'quick'
   githubToken: string | null
+  /**
+   * The signed-in user's GitHub session is dead (ATH-61). Fail with the
+   * sign-in message instead of letting the Railway/.env `GITHUB_TOKEN` fallback
+   * fetch the PR — the review could not be posted afterwards anyway.
+   * Webhook auto-start has no session and leaves this unset.
+   */
+  sessionExpired?: boolean
   emit: ReviewPipelineEmit
 }
 
@@ -37,9 +45,10 @@ export function waitForInflightPipeline(
 }
 
 async function runPipeline(opts: ExecuteReviewPipelineOpts): Promise<void> {
-  const { reviewId, prUrl, mode, githubToken, emit } = opts
+  const { reviewId, prUrl, mode, githubToken, sessionExpired, emit } = opts
   const pipelineStarted = Date.now()
   try {
+    if (sessionExpired) throw new PrFetchError(PrFetchFailure.AUTH)
     const context = createReviewContext(undefined, githubToken)
     let conventionsDoc: string | undefined
     let overlays: AgentOverlays | undefined
@@ -90,7 +99,7 @@ async function runPipeline(opts: ExecuteReviewPipelineOpts): Promise<void> {
         })
       )
     }
-    emit('error', { error: pipelineFailureErrorMessage(err) })
+    emit('error', pipelineFailurePayload(err))
     emit('done', { reviewId })
   }
 }

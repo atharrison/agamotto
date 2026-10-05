@@ -1,6 +1,12 @@
 import {
+  PR_FETCH_MESSAGES,
+  PrFetchError,
+  PrFetchFailure,
+} from '../src/lib/pr-fetch-error'
+import {
   formatTokenUsage,
   pipelineFailureErrorMessage,
+  pipelineFailurePayload,
   tokenBudgetErrorMessage,
   tokenBudgetOverageFromError,
   tokenBudgetOverageFromMessage,
@@ -131,6 +137,29 @@ describe('pipelineFailureErrorMessage', () => {
         cost: 0,
       })
     ).toBe('Token budget exceeded: 167,123 used of 150,000 (over by 17,123).')
+  })
+
+  it('uses the PR fetch message for a PrFetchError (ATH-61)', () => {
+    expect(
+      pipelineFailureErrorMessage(new PrFetchError(PrFetchFailure.AUTH))
+    ).toBe(PR_FETCH_MESSAGES[PrFetchFailure.AUTH])
+  })
+})
+
+describe('pipelineFailurePayload', () => {
+  it('adds the failure code for a PrFetchError', () => {
+    expect(
+      pipelineFailurePayload(new PrFetchError(PrFetchFailure.NOT_FOUND))
+    ).toEqual({
+      error: PR_FETCH_MESSAGES[PrFetchFailure.NOT_FOUND],
+      failure: PrFetchFailure.NOT_FOUND,
+    })
+  })
+
+  it('omits the failure code for other errors', () => {
+    expect(pipelineFailurePayload(new Error('boom'))).toEqual({
+      error: 'Review pipeline failed. Check server logs for details.',
+    })
   })
 })
 

@@ -8,6 +8,11 @@
  */
 
 import { NextRequest } from 'next/server'
+import {
+  PR_FETCH_MESSAGES,
+  PrFetchError,
+  PrFetchFailure,
+} from '../src/lib/pr-fetch-error'
 
 const mockGetReview = jest.fn()
 const mockCreateReview = jest.fn()
@@ -119,9 +124,10 @@ beforeEach(() => {
   mockRunReview.mockResolvedValue(COMPLETE_RESULT)
   mockCreateReviewContext.mockReturnValue({})
   mockGetGitHubToken.mockResolvedValue(null)
+  // Default to a live session; a dead one fails fast (ATH-61).
   mockGetFreshGitHubToken.mockResolvedValue({
-    ok: false,
-    error: 'NO_SESSION',
+    ok: true,
+    token: 'ghu_default',
   })
   mockLoadReviewSettings.mockResolvedValue({
     conventionsDoc: undefined,
@@ -216,6 +222,26 @@ describe('GET /api/review/[id] — ATH-30 stored replay', () => {
       },
     ])
   })
+
+  it('replays the sign-in copy for a stored PrFetchError (ATH-61)', async () => {
+    mockGetReview.mockResolvedValue({
+      id: REVIEW_ID,
+      pr_url: PR_URL,
+      status: 'ERROR',
+      result: null,
+      error_message: String(new PrFetchError(PrFetchFailure.AUTH)),
+    })
+
+    const { text } = await getReviewStream('')
+
+    expect(mockRunReview).not.toHaveBeenCalled()
+    expect(eventsOfType(text, 'error')).toEqual([
+      {
+        error: PR_FETCH_MESSAGES[PrFetchFailure.AUTH],
+        failure: PrFetchFailure.AUTH,
+      },
+    ])
+  })
 })
 
 describe('GET /api/review/[id] — live pipeline', () => {
@@ -228,7 +254,10 @@ describe('GET /api/review/[id] — live pipeline', () => {
 
     expect(mockCreateReview).toHaveBeenCalledWith(REVIEW_ID, PR_URL, 'full')
     expect(mockGetFreshGitHubToken).toHaveBeenCalled()
-    expect(mockCreateReviewContext).toHaveBeenCalledWith(undefined, null)
+    expect(mockCreateReviewContext).toHaveBeenCalledWith(
+      undefined,
+      'ghu_default'
+    )
     expect(mockRunReview).toHaveBeenCalledWith(
       expect.objectContaining({ reviewId: REVIEW_ID, prUrl: PR_URL })
     )
@@ -280,6 +309,55 @@ describe('GET /api/review/[id] — live pipeline', () => {
     await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
 
     expect(mockCreateReviewContext).toHaveBeenCalledWith(undefined, 'ghu_fresh')
+  })
+
+  describe('dead GitHub session (ATH-61)', () => {
+    const prevGithubToken = process.env.GITHUB_TOKEN
+    let errorSpy: jest.SpyInstance
+    let warnSpy: jest.SpyInstance
+
+    beforeEach(() => {
+      // A set GITHUB_TOKEN is the case that used to mask a dead session.
+      process.env.GITHUB_TOKEN = 'ghp_env_pat'
+      errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+      warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+      mockGetReview.mockResolvedValue(null)
+      mockGetFreshGitHubToken.mockResolvedValue({
+        ok: false,
+        error: 'REFRESH_FAILED',
+      })
+    })
+
+    afterEach(() => {
+      errorSpy.mockRestore()
+      warnSpy.mockRestore()
+      if (prevGithubToken === undefined) delete process.env.GITHUB_TOKEN
+      else process.env.GITHUB_TOKEN = prevGithubToken
+    })
+
+    it('fails with the sign-in copy even if GITHUB_TOKEN is set', async () => {
+      const { text } = await getReviewStream(
+        `?prUrl=${encodeURIComponent(PR_URL)}`
+      )
+
+      expect(mockCreateReviewContext).not.toHaveBeenCalled()
+      expect(mockRunReview).not.toHaveBeenCalled()
+      expect(mockFailReview).toHaveBeenCalled()
+      expect(eventsOfType(text, 'error')).toEqual([
+        {
+          error: PR_FETCH_MESSAGES[PrFetchFailure.AUTH],
+          failure: PrFetchFailure.AUTH,
+        },
+      ])
+    })
+
+    it('logs which auth failure ended the run', async () => {
+      await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('REFRESH_FAILED')
+      )
+    })
   })
 
   it('skips createReview when a RUNNING row already exists', async () => {
