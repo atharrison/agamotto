@@ -181,6 +181,12 @@ export async function GET(
       // Errors are emitted inside executeReviewPipeline (catch + SSE).
       try {
         const fresh = await getFreshGitHubToken()
+        if (!fresh.ok) {
+          // Visible in the dev/Railway log: which auth failure ended the run.
+          console.warn(
+            `[review/${reviewId}] GitHub session unusable (${fresh.error}) — failing with sign-in copy`
+          )
+        }
         await executeReviewPipeline({
           reviewId,
           prUrl: runPrUrl,

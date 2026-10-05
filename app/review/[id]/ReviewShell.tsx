@@ -32,7 +32,7 @@ import {
 } from '../../../src/agents/pr-review/schema'
 import { formatConfidencePercent } from '../../../src/lib/confidence-bar'
 import { ConfidenceBar } from '../../components/ConfidenceBar'
-import SignOutButton from '../../components/SignOutButton'
+import { SignOutButton } from '../../components/SignOutButton'
 import { PrFetchFailure } from '../../../src/lib/pr-fetch-error'
 import {
   IncludeAllState,

@@ -320,12 +320,17 @@ describe('GET /api/review/[id] — live pipeline', () => {
       error: 'REFRESH_FAILED',
     })
     const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
 
     const { text } = await getReviewStream(
       `?prUrl=${encodeURIComponent(PR_URL)}`
     )
 
     spy.mockRestore()
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('REFRESH_FAILED')
+    )
+    warnSpy.mockRestore()
     if (prev === undefined) delete process.env.GITHUB_TOKEN
     else process.env.GITHUB_TOKEN = prev
     expect(mockCreateReviewContext).not.toHaveBeenCalled()
