@@ -175,4 +175,45 @@ describe('executeReviewPipeline', () => {
     expect(emit).toHaveBeenCalledWith('done', { reviewId: 'rev-pr-fetch' })
     spy.mockRestore()
   })
+
+  it('fails with the sign-in copy when the user session is dead, without running agents', async () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+    const emit = jest.fn()
+    await executeReviewPipeline({
+      reviewId: 'rev-session',
+      prUrl: PR_URL,
+      mode: 'full',
+      githubToken: null,
+      sessionExpired: true,
+      emit,
+    })
+    // Must not build a context: that is where GITHUB_TOKEN would be picked up.
+    expect(mockCreateReviewContext).not.toHaveBeenCalled()
+    expect(mockRunReview).not.toHaveBeenCalled()
+    expect(mockFailReview).toHaveBeenCalledWith(
+      'rev-session',
+      expect.stringContaining('PrFetchError[AUTH]')
+    )
+    expect(mockMarkPrReviewFailed).toHaveBeenCalled()
+    expect(emit).toHaveBeenCalledWith('error', {
+      error: PR_FETCH_MESSAGES[PrFetchFailure.AUTH],
+      failure: PrFetchFailure.AUTH,
+    })
+    spy.mockRestore()
+  })
+
+  it('runs normally with a null token when the session is not flagged expired (webhook auto-start)', async () => {
+    await executeReviewPipeline({
+      reviewId: 'rev-webhook',
+      prUrl: PR_URL,
+      mode: 'full',
+      githubToken: 'ghp_env_pat',
+      emit: () => {},
+    })
+    expect(mockCreateReviewContext).toHaveBeenCalledWith(
+      undefined,
+      'ghp_env_pat'
+    )
+    expect(mockRunReview).toHaveBeenCalledTimes(1)
+  })
 })

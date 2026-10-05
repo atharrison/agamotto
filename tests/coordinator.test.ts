@@ -627,6 +627,9 @@ describe('runReview (coordinator)', () => {
         expect(err).toBeInstanceOf(PrFetchError)
         expect((err as PrFetchError).failure).toBe(PrFetchFailure.AUTH)
         expect(mockFetchPrFiles).not.toHaveBeenCalled()
+        // The old "skips conversation fetch when octokit is null" invariant.
+        expect(mockFetchPrConversation).not.toHaveBeenCalled()
+        expect(mockRunContextAgent).not.toHaveBeenCalled()
       })
 
       it('never starts the context agent or any domain agent', async () => {

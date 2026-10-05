@@ -103,8 +103,22 @@ describe('prFetchFailureFromMessage', () => {
     }
   })
 
-  it('returns null for unrelated messages', () => {
+  it('stores the failure code so it survives a copy rewording', () => {
+    const stored = String(new PrFetchError(PrFetchFailure.AUTH))
+    expect(stored).toMatch(/^PrFetchError\[AUTH\]: /)
+    const reworded = stored.replace(
+      PR_FETCH_MESSAGES[PrFetchFailure.AUTH],
+      'Old wording that no longer exists'
+    )
+    expect(prFetchFailureFromMessage(reworded)).toBe(PrFetchFailure.AUTH)
+  })
+
+  it('returns null for unrelated messages and unknown codes', () => {
     expect(prFetchFailureFromMessage('Error: boom')).toBeNull()
     expect(prFetchFailureFromMessage('')).toBeNull()
+    expect(prFetchFailureFromMessage('PrFetchError[NOPE]: x')).toBeNull()
+    expect(
+      prFetchFailureFromMessage(PR_FETCH_MESSAGES[PrFetchFailure.AUTH])
+    ).toBeNull()
   })
 })

@@ -39,6 +39,15 @@ export class PrFetchError extends Error {
     super(PR_FETCH_MESSAGES[failure])
     this.name = 'PrFetchError'
   }
+
+  /**
+   * Stored verbatim in `reviews.error_message` via `String(err)`. Leads with
+   * the stable failure code so View Review can recover it even after the
+   * user-facing copy is reworded.
+   */
+  override toString(): string {
+    return `${this.name}[${this.failure}]: ${this.message}`
+  }
 }
 
 function numberProp(value: unknown, key: string): number | undefined {
@@ -74,15 +83,16 @@ export function classifyPrFetchFailure(err: unknown): PrFetchFailure {
   return PrFetchFailure.UNKNOWN
 }
 
+const STORED_FAILURE_CODE = /^PrFetchError\[([A-Z_]+)\]:/
+
 /**
  * Recover the failure from a stored `reviews.error_message`
- * (`String(err)` of a PrFetchError) so View Review shows the same copy.
+ * (`String(err)` of a PrFetchError). Reads the code, not the copy, so View
+ * Review shows the current message even if the wording changes later.
  */
 export function prFetchFailureFromMessage(
   message: string
 ): PrFetchFailure | null {
-  for (const failure of Object.values(PrFetchFailure)) {
-    if (message.includes(PR_FETCH_MESSAGES[failure])) return failure
-  }
-  return null
+  const code = STORED_FAILURE_CODE.exec(message)?.[1]
+  return Object.values(PrFetchFailure).find(f => f === code) ?? null
 }

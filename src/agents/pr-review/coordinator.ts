@@ -178,10 +178,8 @@ async function _runReview(
       externalContextCalls: 0,
     }
   } else {
-    // ATH-61: the real diff is a precondition. Awaited before any agent runs so
-    // an expired token or missing PR stops the review before it spends tokens.
-    // Applied over the context agent's output below so its transcription can
-    // never win.
+    // ATH-61: fatal precondition — awaited before any agent runs so an expired
+    // token or unreachable PR stops the review before it spends tokens.
     const groundTruth = await loadGroundTruthDiff(
       context.octokit,
       prUrl,

@@ -124,9 +124,10 @@ beforeEach(() => {
   mockRunReview.mockResolvedValue(COMPLETE_RESULT)
   mockCreateReviewContext.mockReturnValue({})
   mockGetGitHubToken.mockResolvedValue(null)
+  // Default to a live session; a dead one fails fast (ATH-61).
   mockGetFreshGitHubToken.mockResolvedValue({
-    ok: false,
-    error: 'NO_SESSION',
+    ok: true,
+    token: 'ghu_default',
   })
   mockLoadReviewSettings.mockResolvedValue({
     conventionsDoc: undefined,
@@ -253,7 +254,10 @@ describe('GET /api/review/[id] — live pipeline', () => {
 
     expect(mockCreateReview).toHaveBeenCalledWith(REVIEW_ID, PR_URL, 'full')
     expect(mockGetFreshGitHubToken).toHaveBeenCalled()
-    expect(mockCreateReviewContext).toHaveBeenCalledWith(undefined, null)
+    expect(mockCreateReviewContext).toHaveBeenCalledWith(
+      undefined,
+      'ghu_default'
+    )
     expect(mockRunReview).toHaveBeenCalledWith(
       expect.objectContaining({ reviewId: REVIEW_ID, prUrl: PR_URL })
     )
@@ -305,6 +309,34 @@ describe('GET /api/review/[id] — live pipeline', () => {
     await getReviewStream(`?prUrl=${encodeURIComponent(PR_URL)}`)
 
     expect(mockCreateReviewContext).toHaveBeenCalledWith(undefined, 'ghu_fresh')
+  })
+
+  it('fails with the sign-in copy when the GitHub session is dead, even if GITHUB_TOKEN is set (ATH-61)', async () => {
+    const prev = process.env.GITHUB_TOKEN
+    process.env.GITHUB_TOKEN = 'ghp_env_pat'
+    mockGetReview.mockResolvedValue(null)
+    mockGetFreshGitHubToken.mockResolvedValue({
+      ok: false,
+      error: 'REFRESH_FAILED',
+    })
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+    const { text } = await getReviewStream(
+      `?prUrl=${encodeURIComponent(PR_URL)}`
+    )
+
+    spy.mockRestore()
+    if (prev === undefined) delete process.env.GITHUB_TOKEN
+    else process.env.GITHUB_TOKEN = prev
+    expect(mockCreateReviewContext).not.toHaveBeenCalled()
+    expect(mockRunReview).not.toHaveBeenCalled()
+    expect(mockFailReview).toHaveBeenCalled()
+    expect(eventsOfType(text, 'error')).toEqual([
+      {
+        error: PR_FETCH_MESSAGES[PrFetchFailure.AUTH],
+        failure: PrFetchFailure.AUTH,
+      },
+    ])
   })
 
   it('skips createReview when a RUNNING row already exists', async () => {

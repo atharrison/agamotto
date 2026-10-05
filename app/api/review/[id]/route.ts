@@ -180,12 +180,15 @@ export async function GET(
 
       // Errors are emitted inside executeReviewPipeline (catch + SSE).
       try {
-        const githubToken = githubTokenFromFresh(await getFreshGitHubToken())
+        const fresh = await getFreshGitHubToken()
         await executeReviewPipeline({
           reviewId,
           prUrl: runPrUrl,
           mode,
-          githubToken,
+          githubToken: githubTokenFromFresh(fresh),
+          // ATH-61: a dead session fails here rather than silently falling
+          // back to GITHUB_TOKEN and then failing to post.
+          sessionExpired: !fresh.ok,
           emit: send,
         })
       } finally {
