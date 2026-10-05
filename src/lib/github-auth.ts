@@ -16,8 +16,17 @@ export enum GitHubAuthError {
 export const GITHUB_SESSION_EXPIRED_MESSAGE =
   'GitHub session expired — sign in again'
 
+/** Expiring-token OAuth Apps (SELF_HOSTING §4b): GitHub access tokens last 8h. */
 export const GH_ACCESS_TOKEN_MAX_AGE = 60 * 60 * 8
 export const GH_REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24 * 180
+/**
+ * Without a refresh token the app is not opted in to token expiration, so the
+ * GitHub token never expires. Capping its cookie at 8h (ATH-60) logged the user
+ * out of GitHub every day while their Supabase session was still valid. The
+ * cookie now lives as long as a refresh token would; a revoked token is still
+ * caught by the 401 probe in getFreshGitHubToken().
+ */
+export const GH_NON_EXPIRING_ACCESS_TOKEN_MAX_AGE = GH_REFRESH_TOKEN_MAX_AGE
 
 export const GITHUB_OAUTH_ACCESS_TOKEN_URL =
   'https://github.com/login/oauth/access_token'
@@ -101,7 +110,12 @@ export function setGitHubTokenCookies(
   cookieStore.set(
     GH_TOKEN_COOKIE,
     tokens.accessToken,
-    cookieOptions(tokens.accessTokenMaxAge ?? GH_ACCESS_TOKEN_MAX_AGE)
+    cookieOptions(
+      tokens.accessTokenMaxAge ??
+        (tokens.refreshToken
+          ? GH_ACCESS_TOKEN_MAX_AGE
+          : GH_NON_EXPIRING_ACCESS_TOKEN_MAX_AGE)
+    )
   )
   if (tokens.refreshToken) {
     cookieStore.set(

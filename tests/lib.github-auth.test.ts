@@ -36,6 +36,7 @@ import {
   GITHUB_OAUTH_ACCESS_TOKEN_URL,
   GITHUB_SESSION_EXPIRED_MESSAGE,
   GH_ACCESS_TOKEN_MAX_AGE,
+  GH_NON_EXPIRING_ACCESS_TOKEN_MAX_AGE,
   GH_REFRESH_COOKIE,
   GH_REFRESH_TOKEN_MAX_AGE,
   clearGitHubTokenCookies,
@@ -202,6 +203,26 @@ describe('GitHub token cookies', () => {
     const store = { set: jest.fn(), delete: jest.fn() }
     setGitHubTokenCookies(store, { accessToken: 'ghu_a' })
     expect(store.set).toHaveBeenCalledTimes(1)
+    expect(store.set).toHaveBeenCalledWith(
+      GH_TOKEN_COOKIE,
+      'ghu_a',
+      expect.objectContaining({ maxAge: GH_NON_EXPIRING_ACCESS_TOKEN_MAX_AGE })
+    )
+  })
+
+  // ATH-60: an OAuth App without token expiration issues no refresh token and
+  // a token that never expires; the 8h cookie cap forced a daily re-login.
+  it('does not cap a non-expiring token (no refresh token) at 8 hours', () => {
+    const store = { set: jest.fn(), delete: jest.fn() }
+    setGitHubTokenCookies(store, { accessToken: 'ghp_never_expires' })
+    const maxAge = store.set.mock.calls[0][2].maxAge as number
+    expect(maxAge).toBe(GH_NON_EXPIRING_ACCESS_TOKEN_MAX_AGE)
+    expect(maxAge).toBeGreaterThan(GH_ACCESS_TOKEN_MAX_AGE)
+  })
+
+  it('keeps the 8h access cookie when a refresh token can renew it', () => {
+    const store = { set: jest.fn(), delete: jest.fn() }
+    setGitHubTokenCookies(store, { accessToken: 'ghu_a', refreshToken: 'ghr' })
     expect(store.set).toHaveBeenCalledWith(
       GH_TOKEN_COOKIE,
       'ghu_a',

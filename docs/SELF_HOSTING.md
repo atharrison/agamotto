@@ -142,13 +142,18 @@ For a team deployment, create the OAuth App **under the organization** so it per
 
 3. Click **Register application**.
 
-### 4b. Enable token expiration
+### 4b. Token expiration (optional, recommended)
 
-GitHub OAuth Apps issue non-expiring access tokens unless you opt in. Agamotto needs expiring tokens so it can refresh them when posting PR comments. Without this, comment posts 403 after ~8 hours until the user signs in again.
+This step is **optional**. Both setups work:
+
+- **Not opted in (default):** GitHub issues a non-expiring access token and no refresh token. Agamotto keeps it in an httpOnly cookie for 180 days and checks it against GitHub before each review or post. If you revoke the token on GitHub, the next action asks you to sign in again.
+- **Opted in:** access tokens expire after 8 hours and GitHub also issues a refresh token, which Agamotto uses to renew the token silently. This limits the damage from a leaked token, so it is the safer choice for a shared deployment.
+
+To opt in:
 
 1. Open the OAuth App → **Optional features**.
-2. Click **Opt-in** on **Token expiration**. Access tokens then expire after 8 hours; GitHub also issues a refresh token.
-3. Existing tokens are not affected. After opting in (or after first deploying Agamotto with this setting), users must **sign out and sign in once** so Agamotto can store the refresh cookie.
+2. Click **Opt-in** on **Token expiration**.
+3. Existing tokens are not affected. After opting in, users must **sign out and sign in once** so Agamotto can store the refresh cookie.
 
 `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` must be from this same OAuth App — Agamotto uses them to refresh the user's token.
 
